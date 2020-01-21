@@ -1,0 +1,15 @@
+[package]
+name = "wamp_client"
+version = "0.1.0"
+authors = ["elast0ny <elast0ny00@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+env_logger = "0.7"
+url = "2.1"
+tokio = { version = "0.2", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+# tokio-tungstenite = { git = "https://github.com/snapview/tokio-tungstenite", features = ["tls"] }
