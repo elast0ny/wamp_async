@@ -15,6 +15,7 @@ pub use serializer::*;
 pub use message::*;
 
 pub struct WampConfig {
+    agent: String,
     roles: Vec<ClientRole>,
     serializers: Vec<SerializerType>,
     max_msg_size: u32,
@@ -22,9 +23,16 @@ pub struct WampConfig {
 
 impl WampConfig {
     pub fn new() -> Self {
+        // Config with default values
         WampConfig {
-            roles: Vec::new(),
-            serializers: Vec::new(),
+            agent: String::from(DEFAULT_AGENT_STR),
+            roles: vec![
+                ClientRole::Caller,
+                ClientRole::Callee,
+                ClientRole::Publisher,
+                ClientRole::Subscriber
+                ],
+            serializers: vec![SerializerType::Json, SerializerType::MsgPack],
             max_msg_size: 0,
         }
     }
@@ -42,6 +50,7 @@ impl WampConfig {
         self
     }
 
+    /// Sets the roles that are intended to be used by the client
     pub fn set_roles(mut self, roles: Vec<ClientRole>) -> Self {
         self.roles = roles;
         self
@@ -49,6 +58,7 @@ impl WampConfig {
 }
 
 pub struct WampClient {
+    /// Configuration struct used to customize the client
     config: WampConfig,
     /// Generic transport
     conn: Box<dyn Transport>,
@@ -56,11 +66,13 @@ pub struct WampClient {
     serializer: Box<dyn SerializerImpl>,
     /// Roles supported by the server
     server_roles: HashSet<String>,
+    /// Current Session ID
+    session_id: Option<WampId>,
 }
 
 impl WampClient {
 
-    pub async fn connect<T: AsRef<str>>(uri: T, realm: T, cfg: Option<WampConfig>) -> Result<Self, Box<dyn Error>> {
+    pub async fn connect<T: AsRef<str>>(uri: T, realm: Option<T>, cfg: Option<WampConfig>) -> Result<Self, Box<dyn Error>> {
         
         let uri = match Url::parse(uri.as_ref()) {
             Ok(u) => u,
@@ -77,18 +89,7 @@ impl WampClient {
         let config = match cfg {
             Some(c) => c,
             // Set defaults
-            None => WampConfig::new()
-                // max size
-                .set_max_msg_size(0)
-                // Json then msgpack
-                .set_serializer_list(vec![SerializerType::Json, SerializerType::MsgPack])
-                // All roles
-                .set_roles(vec![
-                    ClientRole::Caller,
-                    ClientRole::Callee,
-                    ClientRole::Publisher,
-                    ClientRole::Subscriber
-                    ]),
+            None => WampConfig::new(),
         };
 
         // Connect to the router using the requested transport
@@ -105,7 +106,7 @@ impl WampClient {
                 };
 
                 // Perform the TCP connection
-                tcp::connect(host_str, host_port, &config.serializers, config.max_msg_size).await?
+                tcp::connect(host_str, host_port, &config).await?
             },
             s => return Err(From::from(format!("Unknown uri scheme : {}", s))),
         };
@@ -118,10 +119,13 @@ impl WampClient {
                 _ => Box::new(serializer::json::JsonSerializer {}),
             },
             server_roles: HashSet::new(),
+            session_id: None,
         };
 
-        // Join the real
-        client.join_realm(realm).await?;
+        // Join the realm
+        if let Some(r) = realm {
+            client.join_realm(r).await?;
+        }
 
         Ok(client)
     }
@@ -135,6 +139,10 @@ impl WampClient {
             roles.insert(role.to_string(), MsgVal::Dict(WampDict::new()));    
         }
         details.insert("roles".to_owned(), MsgVal::Dict(roles));
+
+        if self.config.agent.len() != 0 {
+            details.insert("agent".to_owned(), MsgVal::String(self.config.agent.clone()));
+        }
 
         // Send hello with our info
         self.send(&Msg::Hello {
@@ -153,6 +161,9 @@ impl WampClient {
         for (role,_) in server_roles.drain().take(1) {
             self.server_roles.insert(role);
         }
+
+        // Set the current session
+        self.session_id = Some(session_id);
 
         debug!("Connected with session_id {:?} !", session_id);
 

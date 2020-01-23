@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
+use crate::WampConfig;
 use crate::transport::{Transport, TransportError};
 use crate::serializer::SerializerType;
 
@@ -268,17 +269,17 @@ impl Transport for TcpTransport {
     }
 }
 
-pub async fn connect(host_ip: &str, host_port: u16, serializers: &Vec<SerializerType>, mut msg_size: u32) -> Result<(Box<dyn Transport>, SerializerType), Box<dyn Error>> {
+pub async fn connect(host_ip: &str, host_port: u16, config: &WampConfig) -> Result<(Box<dyn Transport>, SerializerType), Box<dyn Error>> {
     
     let host_addr = format!("{}:{}", host_ip, host_port);
     let mut handshake = HandshakeCtx::new();
-
-    if msg_size == 0 {
-        msg_size = MAX_MSG_SZ;
+    let mut msg_size: u32 = MAX_MSG_SZ;
+    if config.max_msg_size > 0 {
+        msg_size = config.max_msg_size;
     }
     handshake.set_msg_size(msg_size);
 
-    for serializer in serializers {
+    for serializer in &config.serializers {
         trace!("Connecting to host : {}", host_addr);
         let mut stream = TcpStream::connect(&host_addr).await?;
         handshake.set_serializer(*serializer);

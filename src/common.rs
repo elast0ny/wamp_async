@@ -1,5 +1,7 @@
 use log::*;
 
+pub const DEFAULT_AGENT_STR: &str = concat!(env!("CARGO_PKG_NAME"), "_rs-", env!("CARGO_PKG_VERSION"));
+
 pub enum ClientRole {
     Caller,
     Callee,
