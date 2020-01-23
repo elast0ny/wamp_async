@@ -1,11 +1,12 @@
 use log::*;
 use std::error::Error;
 
+use async_trait::async_trait;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-use crate::common::*;
-use crate::message::*;
+use crate::transport::{Transport, TransportError};
+use crate::serializer::SerializerType;
 
 pub fn error_to_str(err_num: u8) -> &'static str {
     match err_num {
@@ -20,15 +21,6 @@ pub fn error_to_str(err_num: u8) -> &'static str {
 
 pub const MAX_MSG_SZ: u32 = 1 << 24;
 pub const MIN_MSG_SZ: u32 = 1 << 9;
-
-#[repr(u8)]
-#[derive(Debug)]
-pub enum WampSerializer {
-    Invalid = 0,
-    Json = 1,
-    MsgPack = 2,
-    // 3 - 15 reserved
-}
 
 #[repr(u8)]
 #[derive(Debug)]
@@ -58,6 +50,8 @@ impl TcpMsg {
 }
 
 struct HandshakeCtx {
+    msg_size: u32,
+    serializer: SerializerType,
     client: [u8; 4],
     server: [u8; 4],
 }
@@ -72,9 +66,9 @@ impl std::fmt::Debug for HandshakeCtx {
             self.client[0], self.client[1], self.client[2], self.client[3],
             1 << ((self.client[1] >> 4) + 9),
             match self.client[1] & 0x0F {
-                x if x == WampSerializer::Json as u8 => WampSerializer::Json,
-                x if x == WampSerializer::MsgPack as u8 => WampSerializer::MsgPack,
-                _ => WampSerializer::Invalid,
+                x if x == SerializerType::Json as u8 => SerializerType::Json,
+                x if x == SerializerType::MsgPack as u8 => SerializerType::MsgPack,
+                _ => SerializerType::Invalid,
             })
     }
 }
@@ -83,17 +77,19 @@ impl HandshakeCtx {
         let client: [u8; 4] = [
             0x7F, // Magic value
             0xF0 & // Max msg length
-            ((WampSerializer::MsgPack as u8) & 0x0F), // Serialized
+            ((SerializerType::MsgPack as u8) & 0x0F), // Serialized
             0, 0 // Reserved
         ];
         HandshakeCtx {
+            msg_size: 0,
+            serializer: SerializerType::Json,
             client,
             server: [0,0,0,0],
         }
     }
 
     /// Sets the maximum message size to the next or equal power of two of msg_size
-    pub fn set_msg_size(mut self, msg_size: u32) -> Self {
+    pub fn set_msg_size(&mut self, msg_size: u32) {
         let req_size: u32 = match msg_size.checked_next_power_of_two() {
             Some(p) => {
                 if p < MIN_MSG_SZ {
@@ -112,29 +108,40 @@ impl HandshakeCtx {
         if msg_size != req_size {
             warn!("Adjusted max TCP message size from {} to {}", msg_size, req_size);
         }
- 
+        
+        self.msg_size = req_size;
         self.client[1] = (self.client[1] & 0x0F) | (0xF0);
-
-        self
     }
 
-    pub fn set_serializer(mut self, serializer: WampSerializer) -> Self {
+    pub fn set_serializer(&mut self, serializer: SerializerType) {
+        self.serializer = serializer;
         self.client[1] = (self.client[1] & 0xF0) | ((serializer as u8) & 0x0F);
-        self
     }
 
     pub fn srv_resp_bytes(&mut self) -> &mut [u8; 4] {
         &mut self.server
     }
 
-    pub fn validate(&self) -> Result<(), Box<dyn Error>> {
+    pub fn validate(&self) -> Result<(), TransportError> {
         if self.server[0] != 0x7f || self.server[2] != 0 || self.server[3] != 0{
-            return Err(From::from(format!("Server's response was not a WAMP-TCP reply")));
+            return Err(TransportError::UnexpectedResponse);
         }
 
         if self.server[1] != self.client[1] {
+            // lower 4 bits should be 0 on error
+            if self.server[1] & 0x0F != 0 {
+                return Err(TransportError::UnexpectedResponse);
+            }
+
             let server_error: u8 = (self.server[1] & 0xF0) >> 4 as u8;
-            return Err(From::from(format!("Server did not accept our handshake : {}", error_to_str(server_error))));
+            return Err(
+                match server_error {
+                    1 => TransportError::SerializerNotSupported(self.serializer),
+                    2 => TransportError::InvalidMaximumMsgSize(self.msg_size),
+                    4 => TransportError::MaximumServerConn,
+                    _ => TransportError::UnexpectedResponse,
+                }
+            );
         }
 
         Ok(())
@@ -209,65 +216,95 @@ impl MsgPrefix {
     }
 }
 
-pub async fn connect(host_ip: &str, host_port: u16, serializer: Option<WampSerializer>, msg_size: Option<u32>) -> Result<TcpStream, Box<dyn Error>> {
+struct TcpTransport {
+    sock: TcpStream,
+}
+
+#[async_trait]
+impl Transport for TcpTransport {
+    async fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
+        let payload: &[u8] = data.as_ref();
+        let header: MsgPrefix = MsgPrefix::new_from(&TcpMsg::Regular, Some(payload.len() as u32));
+        
+        trace!("Send[0x{:X}] : {:?} ({:?})", std::mem::size_of_val(&header), header.bytes, header);
+        self.sock.write_all(&header.bytes).await?;
+    
+        trace!("Send[0x{:X}] : {:?}", payload.len(), payload);
+        self.sock.write_all(payload).await?;
+    
+        Ok(())
+    }
+    
+    async fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
+        let mut payload: Vec<u8>;
+        let mut header: MsgPrefix = MsgPrefix::new();
+    
+        loop {
+            self.sock.read_exact(&mut header.bytes).await?;
+            trace!("Recv[0x{:X}] : {:?} - ({:?})", std::mem::size_of_val(&header), header, header);
+        
+            // Validate the 4 byte header
+            let msg_type = match header.msg_type() {
+                Some(m) => m,
+                None => return Err(From::from("Received invalid WAMP header")),
+            };
+            
+            payload = Vec::with_capacity(header.payload_len() as usize);
+            unsafe {payload.set_len(header.payload_len() as usize)};
+            self.sock.read_exact(&mut payload).await?;
+            trace!("Recv[0x{:X}] : {:?}", payload.len(), payload);
+
+            match msg_type {
+                TcpMsg::Regular => break,
+                _ => continue, //TODO : Handle ping/pong
+            }
+        }
+    
+        Ok(payload)
+    }
+
+    async fn close(self) {
+        match self.sock.shutdown(std::net::Shutdown::Both) {_=>{/*ignore result*/},};
+    }
+}
+
+pub async fn connect(host_ip: &str, host_port: u16, serializers: &Vec<SerializerType>, mut msg_size: u32) -> Result<(Box<dyn Transport>, SerializerType), Box<dyn Error>> {
     
     let host_addr = format!("{}:{}", host_ip, host_port);
+    let mut handshake = HandshakeCtx::new();
 
-    let serializer = match serializer {
-        Some(s) => s,
-        None => WampSerializer::MsgPack,
-    };
-
-    let msg_size = match msg_size {
-        Some(s) => s,
-        None => MAX_MSG_SZ,
-    };
-
-    debug!("Connecting to host : {}", host_addr);
-    let mut stream = TcpStream::connect(&host_addr).await?;
-    let mut handshake = HandshakeCtx::new().set_msg_size(msg_size).set_serializer(serializer);
-    debug!("\tSending handshake : {:?}", handshake);
-    
-    // Preform the WAMP handshake
-    stream.write_all(handshake.as_ref()).await?;
-    stream.read_exact(handshake.srv_resp_bytes()).await?;
-
-    if let Err(e) = handshake.validate() {
-        return Err(From::from(format!("TCP handshake failed : {}", e)));
+    if msg_size == 0 {
+        msg_size = MAX_MSG_SZ;
     }
-    Ok(stream)
-}
+    handshake.set_msg_size(msg_size);
 
-pub async fn send<T: AsyncWriteExt + std::marker::Unpin, B: AsRef<[u8]>>(sock: &mut T, msg_type: &TcpMsg, data: &B) -> Result<(), Box<dyn Error>> {
-    let payload: &[u8] = data.as_ref();
-    let header: MsgPrefix = MsgPrefix::new_from(&msg_type, Some(payload.len() as u32));
-    
-    debug!("Send[0x{:X}] : {:?} ({:?})", std::mem::size_of_val(&header), header.bytes, header);
-    sock.write_all(&header.bytes).await?;
+    for serializer in serializers {
+        trace!("Connecting to host : {}", host_addr);
+        let mut stream = TcpStream::connect(&host_addr).await?;
+        handshake.set_serializer(*serializer);
+        trace!("\tSending handshake : {:?}", handshake);
+        
+        // Preform the WAMP handshake
+        stream.write_all(handshake.as_ref()).await?;
+        stream.read_exact(handshake.srv_resp_bytes()).await?;
 
-    debug!("Send[0x{:X}] : {:?}", payload.len(), payload);
-    sock.write_all(payload).await?;
+        if let Err(e) = handshake.validate() {
+            match e {
+                TransportError::SerializerNotSupported(e) => {
+                    warn!("Failed connecting with serializer '{:?}'", e);
+                    match stream.shutdown(std::net::Shutdown::Both) {_=>{}};
+                    continue;
+                },
+                _ => break,
+            };
+        }
 
-    Ok(())
-}
+        return Ok((Box::new(
+            TcpTransport {
+                sock: stream,
+            }
+        ), *serializer));
+    }
 
-pub async fn recv<T: AsyncReadExt + std::marker::Unpin>(sock: &mut T) -> Result<(TcpMsg, Vec<u8>), Box<dyn Error>> {
-    let mut payload: Vec<u8>;
-    let mut header: MsgPrefix = MsgPrefix::new();
-
-    sock.read_exact(&mut header.bytes).await?;
-    debug!("Recv[0x{:X}] : {:?} - ({:?})", std::mem::size_of_val(&header), header, header);
-
-    // Validate the 4 byte header
-    let msg_type = match header.msg_type() {
-        Some(m) => m,
-        None => return Err(From::from("Received invalid WAMP header")),
-    };
-    
-    payload = Vec::with_capacity(header.payload_len() as usize);
-    unsafe {payload.set_len(header.payload_len() as usize)};
-    sock.read_exact(&mut payload).await?;
-    debug!("Recv[0x{:X}] : {:?}", payload.len(), payload);
-
-    Ok((msg_type, payload))
+    return Err(From::from(format!("Failed to establish connection")));
 }

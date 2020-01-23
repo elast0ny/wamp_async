@@ -1,5 +1,39 @@
 use log::*;
 
+pub enum ClientRole {
+    Caller,
+    Callee,
+    Publisher,
+    Subscriber,
+}
+impl ClientRole {
+    pub fn to_string(&self) -> String {
+        String::from(
+            match self {
+                &ClientRole::Caller => "caller",
+                &ClientRole::Callee => "callee",
+                &ClientRole::Publisher => "publisher",
+                &ClientRole::Subscriber => "subscriber",
+            }
+        )
+    }
+}
+
+pub enum ServerRole {
+    Router,
+    Broker,
+}
+impl ServerRole {
+    pub fn to_string(&self) -> String {
+        String::from(
+            match self {
+                &ServerRole::Router => "router",
+                &ServerRole::Broker => "broker",
+            }
+        )
+    }
+}
+
 /// Returns whether a uri is valid or not (using strict rules)
 pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
     let uri: &str = in_uri.as_ref();

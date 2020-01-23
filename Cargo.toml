@@ -9,7 +9,10 @@ edition = "2018"
 [dependencies]
 log = "0.4"
 env_logger = "0.7"
+quick-error = "1.2"
 url = "2.1"
+async-trait = "0.1"
 tokio = { version = "0.2", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 # tokio-tungstenite = { git = "https://github.com/snapview/tokio-tungstenite", features = ["tls"] }

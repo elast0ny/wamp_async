@@ -1,44 +1,66 @@
 use std::error::Error;
+use std::collections::HashSet;
 
 use log::*;
 use url::*;
-use tokio::net::TcpStream;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-mod transport;
 mod common;
+mod transport;
+mod serializer;
 mod message;
+
 pub use common::*;
 pub use transport::*;
+pub use serializer::*;
 pub use message::*;
 
-enum WampTransport {
-    Websocket,
-    Tcp,
+pub struct WampConfig {
+    roles: Vec<ClientRole>,
+    serializers: Vec<SerializerType>,
+    max_msg_size: u32,
+}
+
+impl WampConfig {
+    pub fn new() -> Self {
+        WampConfig {
+            roles: Vec::new(),
+            serializers: Vec::new(),
+            max_msg_size: 0,
+        }
+    }
+
+    /// Sets the maximum payload size which can be sent over the transport
+    /// Set to 0 to use default
+    pub fn set_max_msg_size(mut self, msg_size: u32) -> Self {
+        self.max_msg_size = msg_size;
+        self
+    }
+
+    /// Sets the serializers that will be used in order of preference (serializers[0] will be attempted first)
+    pub fn set_serializer_list(mut self, serializers: Vec<SerializerType>) -> Self {
+        self.serializers = serializers;
+        self
+    }
+
+    pub fn set_roles(mut self, roles: Vec<ClientRole>) -> Self {
+        self.roles = roles;
+        self
+    }
 }
 
 pub struct WampClient {
-    conn: Option<TcpStream>,
-    serial_impl: WampSerializer,
-    max_msg_size: u32,
-    transport: WampTransport,
+    config: WampConfig,
+    /// Generic transport
+    conn: Box<dyn Transport>,
+    /// Generic serializer
+    serializer: Box<dyn SerializerImpl>,
+    /// Roles supported by the server
+    server_roles: HashSet<String>,
 }
 
 impl WampClient {
-    pub fn new() -> Self {
-        WampClient {
-            conn: None,
-            serial_impl: WampSerializer::MsgPack,
-            max_msg_size: 512,
-            transport: WampTransport::Tcp,
-        }
-    }
-    pub async fn connect<T: AsRef<str>>(&mut self, uri: T, realm: T) -> Result<(), Box<dyn Error>> {
-        
-        if self.conn.is_some() {
-            warn!("Already connected !");
-            return Ok(());
-        }
+
+    pub async fn connect<T: AsRef<str>>(uri: T, realm: T, cfg: Option<WampConfig>) -> Result<Self, Box<dyn Error>> {
         
         let uri = match Url::parse(uri.as_ref()) {
             Ok(u) => u,
@@ -52,9 +74,27 @@ impl WampClient {
             },
         };
 
-        self.conn = match uri.scheme() {
+        let config = match cfg {
+            Some(c) => c,
+            // Set defaults
+            None => WampConfig::new()
+                // max size
+                .set_max_msg_size(0)
+                // Json then msgpack
+                .set_serializer_list(vec![SerializerType::Json, SerializerType::MsgPack])
+                // All roles
+                .set_roles(vec![
+                    ClientRole::Caller,
+                    ClientRole::Callee,
+                    ClientRole::Publisher,
+                    ClientRole::Subscriber
+                    ]),
+        };
+
+        // Connect to the router using the requested transport
+        let (conn, serializer_type) = match uri.scheme() {
             "ws" | "wss" => {
-                Some(ws::connect(&uri).await?)
+                ws::connect(&uri).await?
             },
             "tcp" => {
                 let host_port = match uri.port() {
@@ -65,64 +105,87 @@ impl WampClient {
                 };
 
                 // Perform the TCP connection
-                let stream = tcp::connect(host_str, host_port, None, Some(self.max_msg_size)).await?;
-                self.transport = WampTransport::Tcp;
-                Some(stream)
+                tcp::connect(host_str, host_port, &config.serializers, config.max_msg_size).await?
             },
             s => return Err(From::from(format!("Unknown uri scheme : {}", s))),
         };
-        
-        Ok(())        
-    }
 
-    pub async fn send<B: AsRef<[u8]>>(&mut self, msg_type: WampMsg, payload: &B) -> Result<(), Box<dyn Error>> {
-        match &mut self.conn {
-            Some(ref mut sock) => {
-                match self.transport {
-                    WampTransport::Websocket => {
-                        Err(From::from(format!("Not implemented !")))
-                    },
-                    // Send on TCP transport
-                    WampTransport::Tcp => {
-                        Ok(tcp::send(sock, &tcp::TcpMsg::Regular, payload).await?)
-                    }
-                }
-            }
-            None => return Err(From::from("Tried to send() while not connected...")),
-        }   
-    }
-
-    pub async fn recv(&mut self) -> Result<WampMsg, Box<dyn Error>> {
-
-        if self.conn.is_none() {
-            return Err(From::from("Tried to recv() while not connected..."));
-        }
-
-        let sock: &mut TcpStream = self.conn.as_mut().unwrap();
-
-        // Get the bytes from the transport
-        let data: Vec<u8> = match self.transport {
-            WampTransport::Websocket => {
-                return Err(From::from(format!("Not implemented !")));
+        let mut client = WampClient {
+            config,
+            conn,
+            serializer: match serializer_type {
+                SerializerType::Json => Box::new(serializer::json::JsonSerializer {}),
+                _ => Box::new(serializer::json::JsonSerializer {}),
             },
-            // Send on TCP transport
-            WampTransport::Tcp => {
-                let mut data: Vec<u8>;
-                let mut transport_type: tcp::TcpMsg;
-                loop {
-                    let tmp = tcp::recv(sock).await?;
-                    transport_type = tmp.0;
-                    data = tmp.1;
-                    match transport_type {
-                        tcp::TcpMsg::Regular => break,
-                        tcp::TcpMsg::Ping => {/*TODO : Handle ping*/},
-                        tcp::TcpMsg::Pong => {/*TODO : Handle pong*/},
-                    };
-                }
-                data
-            }
+            server_roles: HashSet::new(),
         };
 
-        return Err(From::from(format!("Not implemented !")));
+        // Join the real
+        client.join_realm(realm).await?;
+
+        Ok(client)
+    }
+
+    pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), Box<dyn Error>> {
+        let mut details: WampDict = WampDict::new();
+        let mut roles: WampDict = WampDict::new();
+
+        // Add all of our roles
+        for role in &self.config.roles {
+            roles.insert(role.to_string(), MsgVal::Dict(WampDict::new()));    
+        }
+        details.insert("roles".to_owned(), MsgVal::Dict(roles));
+
+        // Send hello with our info
+        self.send(&Msg::Hello {
+            realm: String::from(realm.as_ref()),
+            details: details,
+        }).await?;
+
+        // Receive the WELCOME message
+        let resp = self.recv().await?;
+        let (session_id, mut server_roles) = match resp {
+            Msg::Welcome{session, details} => (session, details),
+            m => return Err(From::from(format!("Server did not respond with WELCOME : {:?}", m))),
+        };
+
+        // Add the server roles
+        for (role,_) in server_roles.drain().take(1) {
+            self.server_roles.insert(role);
+        }
+
+        debug!("Connected with session_id {:?} !", session_id);
+
+        Ok(())
+    }
+
+    pub async fn send(&mut self, msg: &Msg) -> Result<(), Box<dyn Error>> {
+
+        // Serialize the data
+        let payload = self.serializer.pack(msg)?;
+
+        match std::str::from_utf8(&payload) {
+            Ok(v) => debug!("Send : {}", v),
+            Err(_) => debug!("Send : {:?}", msg),
+        };
+
+        // Send to host
+        self.conn.send(&payload).await
+    }
+
+    pub async fn recv(&mut self) -> Result<Msg, Box<dyn Error>> {
+
+        // Receive a full message from the host
+        let payload = self.conn.recv().await?;
+
+        // Deserialize into a Msg
+        let msg = self.serializer.unpack(&payload);
+
+        match std::str::from_utf8(&payload) {
+            Ok(v) => debug!("Recv : {}", v),
+            Err(_) => debug!("Recv : {:?}", msg),
+        };
+
+        msg
     }
 }
