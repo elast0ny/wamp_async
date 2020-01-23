@@ -1,5 +1,5 @@
 [package]
-name = "wamp_client"
+name = "wamp_async"
 version = "0.1.0"
 authors = ["elast0ny <elast0ny00@gmail.com>"]
 edition = "2018"
