@@ -9,17 +9,6 @@ use crate::WampConfig;
 use crate::transport::{Transport, TransportError};
 use crate::serializer::SerializerType;
 
-pub fn error_to_str(err_num: u8) -> &'static str {
-    match err_num {
-        0 => "illegal (must not be used)",
-        1 => "serializer unsupported",
-        2 => "maximum message length unacceptable",
-        3 => "use of reserved bits (unsupported feature)",
-        4 => "maximum connection count reached",
-        _ => "Unknown error",
-    }
-}
-
 pub const MAX_MSG_SZ: u32 = 1 << 24;
 pub const MIN_MSG_SZ: u32 = 1 << 9;
 
@@ -220,6 +209,11 @@ impl MsgPrefix {
 struct TcpTransport {
     sock: TcpStream,
 }
+impl Drop for TcpTransport {
+    fn drop(&mut self) {
+        match self.sock.shutdown(std::net::Shutdown::Both) {_=>{/*ignore result*/},};
+    }
+}
 
 #[async_trait]
 impl Transport for TcpTransport {
@@ -264,7 +258,7 @@ impl Transport for TcpTransport {
         Ok(payload)
     }
 
-    async fn close(self) {
+    async fn close(&mut self) {
         match self.sock.shutdown(std::net::Shutdown::Both) {_=>{/*ignore result*/},};
     }
 }

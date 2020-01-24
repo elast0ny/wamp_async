@@ -14,7 +14,7 @@ pub type WampBool = bool;
 pub type WampDict = HashMap<String, MsgVal>;
 pub type WampList = Vec<MsgVal>;
 
-// Generic enum that can represent all types
+/// Generic enum that can represent all types
 #[serde(untagged)]
 #[derive(Serialize, Deserialize, Debug)]
 pub enum MsgVal {
@@ -56,6 +56,7 @@ pub const UNREGISTERED_ID: WampId = 67;
 pub const INVOCATION_ID: WampId = 68;
 pub const YIELD_ID: WampId = 70;
 
+/// WAMP message
 #[derive(Debug)]
 pub enum Msg {
     /// Sent by a Client to initiate opening of a WAMP session to a Router attaching to a Realm.
@@ -63,31 +64,117 @@ pub enum Msg {
         realm: WampUri,
         details: WampDict,
     },
-
     /// Sent by a Router to accept a Client. The WAMP session is now open.
     Welcome {
         session: WampId,
         details: WampDict,
     },
-
     /// Sent by a Peer*to abort the opening of a WAMP session. No response is expected.
     Abort {
         details: WampDict,
         reason: WampUri,
     },
-
     /// Sent by a Peer to close a previously opened WAMP session. Must be echo'ed by the receiving Peer.
     Goodbye {
         details: WampDict,
         reason: WampUri,
     },
-
     /// Error reply sent by a Peer as an error response to different kinds of requests.
     Error {
         typ: WampInteger,
         request: WampId,
         details: WampDict,
         error: WampUri,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// Sent by a Publisher to a Broker to publish an event.
+    Publish {
+        request: WampId,
+        options: WampDict,
+        topic: WampUri,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// Acknowledge sent by a Broker to a Publisher for acknowledged publications.
+    Published {
+        request: WampId,
+        publication: WampId,
+    },
+    /// Subscribe request sent by a Subscriber to a Broker to subscribe to a topic.
+    Subscribe {
+        request: WampId,
+        options: WampDict,
+        topic: WampUri,
+    },
+    /// Acknowledge sent by a Broker to a Subscriber to acknowledge a subscription.
+    Subscribed {
+        request: WampId,
+        subscription: WampId,
+    },
+    /// Unsubscribe request sent by a Subscriber to a Broker to unsubscribe a subscription.
+    Unsubscribe {
+        request: WampId,
+        subscription: WampId,
+    },
+    /// Acknowledge sent by a Broker to a Subscriber to acknowledge unsubscription.
+    Unsubscribed {
+        request: WampId,
+    },
+    /// Event dispatched by Broker to Subscribers for subscriptions the event was matching.
+    Event {
+        subscription: WampId,
+        publication: WampId,
+        details: WampDict,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// Call as originally issued by the Caller to the Dealer.
+    Call {
+        request: WampId,
+        options: WampDict,
+        procedure: WampUri,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// Result of a call as returned by Dealer to Caller.
+    Result {
+        request: WampId,
+        details: WampDict,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// A Callees request to register an endpoint at a Dealer.
+    Register {
+        request: WampId,
+        options: WampDict,
+        procedure: WampUri,
+    },
+    /// Acknowledge sent by a Dealer to a Callee for successful registration.
+    Registered {
+        request: WampId,
+        registration: WampId,
+    },
+    /// A Callees request to unregister a previously established registration.
+    Unregister {
+        request: WampId,
+        registration: WampId,
+    },
+    /// Acknowledge sent by a Dealer to a Callee for successful unregistration.
+    Unregistered {
+        request: WampId,
+    },
+    /// Actual invocation of an endpoint sent by Dealer to a Callee.
+    Invocation {
+        request: WampId,
+        registration: WampId,
+        arguments: Option<WampList>,
+        arguments_kw: Option<WampDict>,
+    },
+    /// Actual yield from an endpoint sent by a Callee to Dealer.
+    Yield {
+        request: WampId,
+        options: WampDict,
         arguments: Option<WampList>,
         arguments_kw: Option<WampDict>,
     },
@@ -100,6 +187,7 @@ impl Serialize for Msg
     where
         S: Serializer,
     {
+        // Converts the enum struct to a tuple representation
         match self {
             &Msg::Hello{ref realm, ref details} => (HELLO_ID, realm, details).serialize(serializer),
             &Msg::Welcome{ref session, ref details} => (WELCOME_ID, session, details).serialize(serializer),
@@ -113,6 +201,69 @@ impl Serialize for Msg
                 } else {
                     (ERROR_ID, typ, request, details, error).serialize(serializer)
                 }
+            },
+            &Msg::Publish{ref request, ref options, ref topic, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (request, options, topic, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (request, options, topic, arguments).serialize(serializer)
+                } else {
+                    (request, options, topic).serialize(serializer)
+                }                
+            },
+            &Msg::Published{ref request, ref publication} => (request, publication).serialize(serializer),
+            &Msg::Subscribe{ref request, ref options, ref topic} => (request, options, topic).serialize(serializer),
+            &Msg::Subscribed{ref request, ref subscription} => (request, subscription).serialize(serializer),
+            &Msg::Unsubscribe{ref request, ref subscription} => (request, subscription).serialize(serializer),
+            &Msg::Unsubscribed{ref request} => (request).serialize(serializer),
+            &Msg::Event{ref subscription, ref publication, ref details, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (subscription, publication, details, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (subscription, publication, details, arguments).serialize(serializer)
+                } else {
+                    (subscription, publication, details).serialize(serializer)
+                }                
+            },
+            &Msg::Call{ref request, ref options, ref procedure, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (request, options, procedure, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (request, options, procedure, arguments).serialize(serializer)
+                } else {
+                    (request, options, procedure).serialize(serializer)
+                }                
+            },
+            &Msg::Result{ref request, ref details, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (request, details, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (request, details, arguments).serialize(serializer)
+                } else {
+                    (request, details).serialize(serializer)
+                }                
+            },
+            &Msg::Register{ref request, ref options, ref procedure} => (request, options, procedure).serialize(serializer),
+            &Msg::Registered{ref request, ref registration} => (request, registration).serialize(serializer),
+            &Msg::Unregister{ref request, ref registration} => (request, registration).serialize(serializer),
+            &Msg::Unregistered{ref request} => (request).serialize(serializer),
+            &Msg::Invocation{ref request, ref registration, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (request, registration, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (request, registration, arguments).serialize(serializer)
+                } else {
+                    (request, registration).serialize(serializer)
+                }                
+            },
+            &Msg::Yield{ref request, ref options, ref arguments, ref arguments_kw} => {
+                if arguments_kw.is_some() {
+                    (request, options, arguments, arguments_kw).serialize(serializer)
+                } else if arguments.is_some() {
+                    (request, options, arguments).serialize(serializer)
+                } else {
+                    (request, options).serialize(serializer)
+                }                
             },
         }
     }
@@ -161,49 +312,109 @@ impl<'de> Deserialize<'de> for Msg {
                 })
             }
             fn de_publish<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Publish{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    topic: v.next_element()?.ok_or(Error::missing_field("topic"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
             fn de_published<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Published{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    publication: v.next_element()?.ok_or(Error::missing_field("publication"))?,
+                })
             }
             fn de_subscribe<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Subscribe{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    topic: v.next_element()?.ok_or(Error::missing_field("topic"))?,
+                })
             }
             fn de_subscribed<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Subscribed{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    subscription: v.next_element()?.ok_or(Error::missing_field("subscription"))?,
+                })
             }
             fn de_unsubscribe<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Unsubscribe{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    subscription: v.next_element()?.ok_or(Error::missing_field("subscription"))?,
+                })
             }
             fn de_unsubscribed<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Unsubscribed{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                })
             }
             fn de_event<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Event{
+                    subscription: v.next_element()?.ok_or(Error::missing_field("subscription"))?,
+                    publication: v.next_element()?.ok_or(Error::missing_field("publication"))?,
+                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
             fn de_call<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Call{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    procedure: v.next_element()?.ok_or(Error::missing_field("procedure"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
             fn de_result<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Result{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
             fn de_register<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Register{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    procedure: v.next_element()?.ok_or(Error::missing_field("procedure"))?,
+                })
             }
             fn de_registered<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Registered{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    registration: v.next_element()?.ok_or(Error::missing_field("registration"))?,
+                })
             }
             fn de_unregister<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Unregister{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    registration: v.next_element()?.ok_or(Error::missing_field("registration"))?,
+                })
             }
             fn de_unregistered<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Unregistered{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                })
             }
             fn de_invocation<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Invocation{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    registration: v.next_element()?.ok_or(Error::missing_field("registration"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
             fn de_yield<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
-                Err(Error::custom("Not implemented yet"))
+                Ok(Msg::Yield{
+                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    arguments: v.next_element()?.unwrap_or(None),
+                    arguments_kw: v.next_element()?.unwrap_or(None),
+                })
             }
         }
         impl<'de> Visitor<'de> for MsgVisitor {

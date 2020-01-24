@@ -134,6 +134,10 @@ impl WampClient {
         let mut details: WampDict = WampDict::new();
         let mut roles: WampDict = WampDict::new();
 
+        if self.session_id.is_some() {
+            return Err(From::from(format!("join_realm('{}') : Client already joined to a realm", realm.as_ref())));
+        }
+
         // Add all of our roles
         for role in &self.config.roles {
             roles.insert(role.to_string(), MsgVal::Dict(WampDict::new()));    
@@ -170,6 +174,34 @@ impl WampClient {
         Ok(())
     }
 
+    /// Leaves the current realm if there is one
+    pub async fn leave_realm(&mut self) -> Result<(), Box<dyn Error>> {
+
+        // Nothing to do if not currently in a session
+        if self.session_id.take().is_none() {
+            return Ok(());
+        }
+
+        self.send(
+            &Msg::Goodbye {
+                reason: "wamp.close.close_realm".to_string(),
+                details: WampDict::new(),
+            }
+        ).await?;
+        let resp = self.recv().await?;
+
+        match resp {
+            Msg::Goodbye{reason, details:_} => {
+                if reason != "wamp.close.goodbye_and_out" {
+                    warn!("Server respond with GOODBYE to our GOODBYE but with unexpected reason : {}", reason);
+                }
+            },
+            _ => return Err(From::from("Server did not respond with GOODBYE :(")),
+        };
+
+        Ok(())
+    }
+
     pub async fn send(&mut self, msg: &Msg) -> Result<(), Box<dyn Error>> {
 
         // Serialize the data
@@ -198,5 +230,15 @@ impl WampClient {
         };
 
         msg
+    }
+
+    pub async fn shutdown(mut self) {
+        // Leave realm, ignore errors
+        match self.leave_realm().await {
+            _ => {},
+        };
+
+        // Close the transport
+        self.conn.close().await;
     }
 }

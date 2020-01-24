@@ -18,7 +18,7 @@ pub trait Transport {
     /// Receives a whole wamp message from the transport
     async fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>>;
     /// Closes the transport connection with the host
-    async fn close(self);
+    async fn close(&mut self);
 }
 
 quick_error! {
