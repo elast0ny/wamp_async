@@ -1,11 +1,10 @@
 use log::*;
-use std::error::Error;
 
 use async_trait::async_trait;
 use tokio::net::TcpStream;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-use crate::WampConfig;
+use crate::ClientConfig;
 use crate::transport::{Transport, TransportError};
 use crate::serializer::SerializerType;
 
@@ -217,7 +216,7 @@ impl Drop for TcpTransport {
 
 #[async_trait]
 impl Transport for TcpTransport {
-    async fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>> {
+    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
         let payload: &[u8] = data.as_ref();
         let header: MsgPrefix = MsgPrefix::new_from(&TcpMsg::Regular, Some(payload.len() as u32));
         
@@ -230,7 +229,7 @@ impl Transport for TcpTransport {
         Ok(())
     }
     
-    async fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>> {
+    async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
         let mut payload: Vec<u8>;
         let mut header: MsgPrefix = MsgPrefix::new();
     
@@ -241,7 +240,7 @@ impl Transport for TcpTransport {
             // Validate the 4 byte header
             let msg_type = match header.msg_type() {
                 Some(m) => m,
-                None => return Err(From::from("Received invalid WAMP header")),
+                None => return Err(TransportError::InvalidWampMsgHeader),
             };
             
             payload = Vec::with_capacity(header.payload_len() as usize);
@@ -263,17 +262,17 @@ impl Transport for TcpTransport {
     }
 }
 
-pub async fn connect(host_ip: &str, host_port: u16, config: &WampConfig) -> Result<(Box<dyn Transport>, SerializerType), Box<dyn Error>> {
+pub async fn connect(host_ip: &str, host_port: u16, config: &ClientConfig) -> Result<(Box<dyn Transport + Send + Sync>, SerializerType), TransportError> {
     
     let host_addr = format!("{}:{}", host_ip, host_port);
     let mut handshake = HandshakeCtx::new();
     let mut msg_size: u32 = MAX_MSG_SZ;
-    if config.max_msg_size > 0 {
-        msg_size = config.max_msg_size;
+    if let Some(m) = config.get_max_msg_size() {
+        msg_size = m;
     }
     handshake.set_msg_size(msg_size);
 
-    for serializer in &config.serializers {
+    for serializer in config.get_serializers() {
         trace!("Connecting to host : {}", host_addr);
         let mut stream = TcpStream::connect(&host_addr).await?;
         handshake.set_serializer(*serializer);
@@ -301,5 +300,5 @@ pub async fn connect(host_ip: &str, host_port: u16, config: &WampConfig) -> Resu
         ), *serializer));
     }
 
-    return Err(From::from(format!("Failed to establish connection")));
+    return Err(TransportError::ConnectionFailed);
 }

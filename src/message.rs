@@ -1,38 +1,10 @@
-use std::collections::HashMap;
 use std::fmt;
 
 use serde::{Serialize, Deserialize};
 use serde::ser::{Serializer};
 use serde::de::{Deserializer, Error, Visitor, SeqAccess};
 
-//Basic types
-pub type WampUri = String;
-pub type WampId = u64;
-pub type WampInteger = usize;
-pub type WampString = String;
-pub type WampBool = bool;
-pub type WampDict = HashMap<String, MsgVal>;
-pub type WampList = Vec<MsgVal>;
-
-/// Generic enum that can represent all types
-#[serde(untagged)]
-#[derive(Serialize, Deserialize, Debug)]
-pub enum MsgVal {
-    ///uri: a string URI as defined in URIs
-    Uri(WampUri),
-    ///id: an integer ID as defined in IDs
-    Id(WampId),
-    ///integer: a non-negative integer
-    Integer(WampInteger),
-    ///string: a Unicode string, including the empty string
-    String(WampString),
-    ///bool: a boolean value (true or false) - integers MUST NOT be used instead of boolean value
-    Bool(WampBool),
-    ///dict: a dictionary (map) where keys MUST be strings, keys MUST be unique and serialization order is undefined (left to the serializer being used)
-    Dict(WampDict),
-    ///list: a list (array) where items can be again any of this enumeration
-    List(WampList),
-}
+use crate::common::*;
 
 // Message IDs
 pub const HELLO_ID: WampId = 1;
@@ -180,6 +152,28 @@ pub enum Msg {
     },
 }
 
+impl Msg {
+    pub fn request_id(&self) -> Option<WampId> {
+        Some(match self {
+            &Msg::Error{ref request, ..} => request,
+            &Msg::Publish{ref request, ..} => request,
+            &Msg::Published{ref request, ..} => request,
+            &Msg::Subscribe{ref request, ..} => request,
+            &Msg::Subscribed{ref request, ..} => request,
+            &Msg::Unsubscribe{ref request, ..} => request,
+            &Msg::Unsubscribed{ref request} => request,
+            &Msg::Call{ref request, ..} => request,
+            &Msg::Result{ref request, ..} => request,
+            &Msg::Register{ref request, ..} => request,
+            &Msg::Registered{ref request, ..} => request,
+            &Msg::Unregister{ref request, ..} => request,
+            &Msg::Unregistered{ref request} => request,
+            &Msg::Invocation{ref request, ..} => request,
+            &Msg::Yield{ref request, ..} => request,
+            &Msg::Hello{..} | &Msg::Welcome{..} | &Msg::Abort{..} | &Msg::Goodbye{..} | &Msg::Event{..} => return None,
+        }.clone())
+    }
+}
 
 //TODO: Code below is very boilerplatey, it could probably be generated more reliably with a macro that transforms
 //      an enum struct variant into a tuple before serialization and vice-versa.    
@@ -208,65 +202,65 @@ impl Serialize for Msg
             },
             &Msg::Publish{ref request, ref options, ref topic, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (request, options, topic, arguments, arguments_kw).serialize(serializer)
+                    (PUBLISH_ID, request, options, topic, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (request, options, topic, arguments).serialize(serializer)
+                    (PUBLISH_ID, request, options, topic, arguments).serialize(serializer)
                 } else {
-                    (request, options, topic).serialize(serializer)
+                    (PUBLISH_ID, request, options, topic).serialize(serializer)
                 }                
             },
-            &Msg::Published{ref request, ref publication} => (request, publication).serialize(serializer),
-            &Msg::Subscribe{ref request, ref options, ref topic} => (request, options, topic).serialize(serializer),
-            &Msg::Subscribed{ref request, ref subscription} => (request, subscription).serialize(serializer),
-            &Msg::Unsubscribe{ref request, ref subscription} => (request, subscription).serialize(serializer),
-            &Msg::Unsubscribed{ref request} => (request).serialize(serializer),
+            &Msg::Published{ref request, ref publication} => (PUBLISHED_ID, request, publication).serialize(serializer),
+            &Msg::Subscribe{ref request, ref options, ref topic} => (SUBSCRIBE_ID, request, options, topic).serialize(serializer),
+            &Msg::Subscribed{ref request, ref subscription} => (SUBSCRIBED_ID, request, subscription).serialize(serializer),
+            &Msg::Unsubscribe{ref request, ref subscription} => (UNSUBSCRIBE_ID, request, subscription).serialize(serializer),
+            &Msg::Unsubscribed{ref request} => (UNSUBSCRIBED_ID, request).serialize(serializer),
             &Msg::Event{ref subscription, ref publication, ref details, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (subscription, publication, details, arguments, arguments_kw).serialize(serializer)
+                    (EVENT_ID, subscription, publication, details, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (subscription, publication, details, arguments).serialize(serializer)
+                    (EVENT_ID, subscription, publication, details, arguments).serialize(serializer)
                 } else {
-                    (subscription, publication, details).serialize(serializer)
+                    (EVENT_ID, subscription, publication, details).serialize(serializer)
                 }                
             },
             &Msg::Call{ref request, ref options, ref procedure, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (request, options, procedure, arguments, arguments_kw).serialize(serializer)
+                    (CALL_ID, request, options, procedure, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (request, options, procedure, arguments).serialize(serializer)
+                    (CALL_ID, request, options, procedure, arguments).serialize(serializer)
                 } else {
-                    (request, options, procedure).serialize(serializer)
+                    (CALL_ID, request, options, procedure).serialize(serializer)
                 }                
             },
             &Msg::Result{ref request, ref details, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (request, details, arguments, arguments_kw).serialize(serializer)
+                    (RESULT_ID, request, details, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (request, details, arguments).serialize(serializer)
+                    (RESULT_ID, request, details, arguments).serialize(serializer)
                 } else {
-                    (request, details).serialize(serializer)
+                    (RESULT_ID, request, details).serialize(serializer)
                 }                
             },
-            &Msg::Register{ref request, ref options, ref procedure} => (request, options, procedure).serialize(serializer),
-            &Msg::Registered{ref request, ref registration} => (request, registration).serialize(serializer),
-            &Msg::Unregister{ref request, ref registration} => (request, registration).serialize(serializer),
-            &Msg::Unregistered{ref request} => (request).serialize(serializer),
+            &Msg::Register{ref request, ref options, ref procedure} => (REGISTER_ID, request, options, procedure).serialize(serializer),
+            &Msg::Registered{ref request, ref registration} => (REGISTERED_ID, request, registration).serialize(serializer),
+            &Msg::Unregister{ref request, ref registration} => (UNREGISTER_ID, request, registration).serialize(serializer),
+            &Msg::Unregistered{ref request} => (UNREGISTERED_ID, request).serialize(serializer),
             &Msg::Invocation{ref request, ref registration, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (request, registration, arguments, arguments_kw).serialize(serializer)
+                    (INVOCATION_ID, request, registration, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (request, registration, arguments).serialize(serializer)
+                    (INVOCATION_ID, request, registration, arguments).serialize(serializer)
                 } else {
-                    (request, registration).serialize(serializer)
+                    (INVOCATION_ID, request, registration).serialize(serializer)
                 }                
             },
             &Msg::Yield{ref request, ref options, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (request, options, arguments, arguments_kw).serialize(serializer)
+                    (YIELD_ID, request, options, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (request, options, arguments).serialize(serializer)
+                    (YIELD_ID, request, options, arguments).serialize(serializer)
                 } else {
-                    (request, options).serialize(serializer)
+                    (YIELD_ID, request, options).serialize(serializer)
                 }                
             },
         }

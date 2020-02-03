@@ -1,4 +1,3 @@
-use std::error::Error;
 use async_trait::async_trait;
 use quick_error::*;
 
@@ -14,9 +13,9 @@ use crate::serializer::SerializerType;
 #[async_trait]
 pub trait Transport {
     /// Sends a whole wamp message over the transport
-    async fn send(&mut self, data: &[u8]) -> Result<(), Box<dyn Error>>;
+    async fn send(&mut self, data: &[u8]) -> Result<(), TransportError>;
     /// Receives a whole wamp message from the transport
-    async fn recv(&mut self) -> Result<Vec<u8>, Box<dyn Error>>;
+    async fn recv(&mut self) -> Result<Vec<u8>, TransportError>;
     /// Closes the transport connection with the host
     async fn close(&mut self);
 }
@@ -24,6 +23,17 @@ pub trait Transport {
 quick_error! {
     #[derive(Debug)]
     pub enum TransportError {
+        NotImplemented {
+            description("Transport not implemented")
+        }
+        FaildOperation(e: std::io::Error) {
+            from()
+            description("An operation on the transport failed")
+            display(_self) -> ("{} : {}", _self, e)
+        }
+        InvalidWampMsgHeader {
+            description("Invalid WAMP message header received from the server")
+        }
         MaximumServerConn {
             description("Server hit the maximum connection count")
         }
@@ -38,14 +48,8 @@ quick_error! {
             description("The server did not accept the maximum payload size")
             display(self_) -> ("{} (Requested : {})", self_, e)
         }
-        UnknownState(e: String) {
-            description("Agent is in an unexpected state")
-            display(self_) -> ("{} : {}", self_, e)
-        }
-        ConnectionFailed(err: std::io::Error) {
-            cause(err)
-            description("Failed to connect")
-            display(self_) -> ("{} : {}", self_.description(), err)
+        ConnectionFailed {
+            description("Failed to negotiate connection with the server")
         }
     }
 }

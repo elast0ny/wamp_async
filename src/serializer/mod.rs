@@ -1,4 +1,4 @@
-use std::error::Error;
+use quick_error::*;
 
 use crate::message::Msg;
 
@@ -13,7 +13,22 @@ pub enum SerializerType {
     // 3 - 15 reserved
 }
 
+quick_error! {
+    #[derive(Debug)]
+    pub enum SerializerError {
+        Serialization(e: String) {
+            description("Failed to serialize message")
+            display(_self) -> ("{} : {}", _self, e)
+        }
+        Deserialization(e: String) {
+            description("Failed to deserialize message")
+            display(_self) -> ("{} : {}", _self, e)
+        }
+    }
+}
+
+
 pub trait SerializerImpl {
-    fn pack(&self, value: &Msg) -> Result<Vec<u8>, Box<dyn Error>>;
-    fn unpack<'a>(&self, v: &'a [u8]) -> Result<Msg, Box<dyn Error>>;
+    fn pack(&self, value: &Msg) -> Result<Vec<u8>, SerializerError>;
+    fn unpack<'a>(&self, v: &'a [u8]) -> Result<Msg, SerializerError>;
 }

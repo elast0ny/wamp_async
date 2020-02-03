@@ -1,14 +1,60 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::error::Error;
+
+use serde::{Serialize, Deserialize};
 use log::*;
 
 pub const DEFAULT_AGENT_STR: &str = concat!(env!("CARGO_PKG_NAME"), "_rs-", env!("CARGO_PKG_VERSION"));
 
+//Basic WAMP data types
+pub type WampUri = String;
+pub type WampId = u64;
+pub type WampInteger = usize;
+pub type WampString = String;
+pub type WampBool = bool;
+pub type WampDict = HashMap<String, Arg>;
+pub type WampList = Vec<Arg>;
+pub type WampArgs = Option<WampList>;
+pub type WampKwArgs = Option<WampDict>;
+pub type WampFuncArgs = (WampArgs, WampKwArgs);
+pub type WampRetVal = Result<WampFuncArgs, Box<dyn Error>>;
+pub type WampFunc = fn(WampArgs, WampKwArgs) -> WampRetVal;
+
+/// Generic enum that can represent all types
+#[serde(untagged)]
+#[derive(Serialize, Deserialize, Debug)]
+pub enum Arg {
+    /// uri: a string URI as defined in URIs
+    Uri(WampUri),
+    /// id: an integer ID as defined in IDs
+    Id(WampId),
+    /// integer: a non-negative integer
+    Integer(WampInteger),
+    /// string: a Unicode string, including the empty string
+    String(WampString),
+    /// bool: a boolean value (true or false) - integers MUST NOT be used instead of boolean value
+    Bool(WampBool),
+    /// dict: a dictionary (map) where keys MUST be strings, keys MUST be unique and serialization order is undefined (left to the serializer being used)
+    Dict(WampDict),
+    /// list: a list (array) where items can be again any of this enumeration
+    List(WampList),
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+/// All the supported roles a client can have
 pub enum ClientRole {
+    /// Client can call RPC endpoints
     Caller,
+    /// Client can register RPC endpoints
     Callee,
+    /// Client can publish events to topics
     Publisher,
+    /// Client can register for events on topics
     Subscriber,
 }
 impl ClientRole {
+    /// Returns the string repesentation of the role
     pub fn to_string(&self) -> String {
         String::from(
             match self {
@@ -21,11 +67,15 @@ impl ClientRole {
     }
 }
 
+/// All the supported roles a server can have
 pub enum ServerRole {
+    /// Server supports RPC calls
     Router,
+    /// Server supports pub/sub
     Broker,
 }
 impl ServerRole {
+    /// Returns the string repesentation of the role
     pub fn to_string(&self) -> String {
         String::from(
             match self {
