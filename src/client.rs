@@ -3,12 +3,12 @@ use std::collections::HashSet;
 
 use log::*;
 use url::*;
-use tokio::sync::{mpsc, mpsc::UnboundedSender};
+use tokio::sync::{mpsc, mpsc::UnboundedSender, mpsc::UnboundedReceiver};
 use tokio::sync::oneshot;
 
 use crate::error::*;
 use crate::serializer::SerializerType;
-use crate::common::*;
+pub use crate::common::*;
 use crate::core::*;
 
 pub struct ClientConfig {
@@ -99,8 +99,9 @@ impl Client {
 
         let (ctl_channel, ctl_receiver) = mpsc::unbounded_channel();
 
+        let ctl_sender = ctl_channel.clone();
         // Establish a connection
-        let conn = Connection::connect(&uri, &config, ctl_receiver).await?;
+        let conn = Connection::connect(&uri, &config, (ctl_sender, ctl_receiver)).await?;
 
         Ok(Client {
             config,
@@ -112,12 +113,24 @@ impl Client {
     }
     
     /// Returns a future which will run the event loop. The caller is responsible for running it.
-    pub fn event_loop(&mut self) -> Result<impl Future<Output = Result<(), WampError>> + Send + 'static, WampError> {
-        let conn = self.conn.take();
-        match conn {
-            Some(c) => return Ok(c.event_loop()),
+    pub fn event_loop(&mut self) -> Result<
+        (
+            GenericFuture, 
+            Option<UnboundedReceiver<GenericFuture>>
+        ), WampError> {
+        
+        let mut core = match self.conn.take() {
+            Some(c) => c,
             None => return Err(From::from("Event loop already running".to_string())),
         };
+
+        let rpc_evt_queue = if self.config.roles.contains(&ClientRole::Callee) {
+            core.rpc_event_queue_r.take()
+        } else {
+            None
+        };
+
+        Ok((Box::pin(core.event_loop()), rpc_evt_queue))
     }
 
     /// Sends a join realm request to the core event loop
@@ -251,6 +264,74 @@ impl Client {
         Ok(pub_id.unwrap())
     }
 
+    /// Register an RPC endpoint
+    pub async fn register<T, F, Fut>(&self, uri: T, func_ptr: F) -> Result<WampId, WampError>
+    where
+        T: AsRef<str>,
+        F: Fn(WampArgs, WampKwArgs) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(WampArgs, WampKwArgs), WampError>> + Send + 'static,
+    {
+        // Send the request
+        let (res, result) = oneshot::channel();
+        if let Err(e) = self.ctl_channel.send(Request::Register {
+            uri: uri.as_ref().to_string(),
+            res,
+            func_ptr: Box::new(move |a,k| Box::pin(func_ptr(a,k))),
+        }) {
+            return Err(From::from(format!("Core never received our request : {}", e)));
+        }
+
+        // Wait for the result
+        let rpc_id = match result.await {
+            Ok(r) => r?,
+            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+        };
+
+        Ok(rpc_id)
+    }
+
+    /// Unregisters the RPC ID
+    pub async fn unregister(&self, rpc_id: WampId) -> Result<(), WampError> {
+        // Send the request
+        let (res, result) = oneshot::channel();
+        if let Err(e) = self.ctl_channel.send(Request::Unregister {
+            rpc_id,
+            res,
+        }) {
+            return Err(From::from(format!("Core never received our request : {}", e)));
+        }
+
+        // Wait for the result
+        match result.await {
+            Ok(r) => r?,
+            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+        };
+
+        Ok(())
+    }
+
+    pub async fn call<T: AsRef<str>>(&self, uri: T, arguments: WampArgs, arguments_kw: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
+
+        // Send the request
+        let (res, result) = oneshot::channel();
+        if let Err(e) = self.ctl_channel.send(Request::Call {
+            uri: uri.as_ref().to_string(),
+            options: WampDict::new(),
+            arguments,
+            arguments_kw,
+            res,
+        }) {
+            return Err(From::from(format!("Core never received our request : {}", e)));
+        }
+
+        // Wait for the result
+        let res = match result.await {
+            Ok(r) => r,
+            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+        };
+
+        res
+    }
     /// Cleanly closes a connection with the server
     pub async fn disconnect(mut self) {
         // Cleanly leave realm

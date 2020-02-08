@@ -8,7 +8,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Connected !!");
 
     // Spawn the event loop
-    tokio::spawn(client.event_loop()?);
+    tokio::spawn(client.event_loop()?.0);
 
     println!("Joining realm");
     client.join_realm("realm1").await?;

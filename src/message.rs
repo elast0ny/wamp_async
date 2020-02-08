@@ -140,6 +140,7 @@ pub enum Msg {
     Invocation {
         request: WampId,
         registration: WampId,
+        details: WampDict,
         arguments: Option<WampList>,
         arguments_kw: Option<WampDict>,
     },
@@ -168,9 +169,8 @@ impl Msg {
             &Msg::Registered{ref request, ..} => request,
             &Msg::Unregister{ref request, ..} => request,
             &Msg::Unregistered{ref request} => request,
-            &Msg::Invocation{ref request, ..} => request,
             &Msg::Yield{ref request, ..} => request,
-            &Msg::Hello{..} | &Msg::Welcome{..} | &Msg::Abort{..} | &Msg::Goodbye{..} | &Msg::Event{..} => return None,
+            &Msg::Hello{..} | &Msg::Welcome{..} | &Msg::Abort{..} | &Msg::Goodbye{..} | &Msg::Event{..} | &Msg::Invocation{ ..} => return None,
         }.clone())
     }
 }
@@ -245,13 +245,13 @@ impl Serialize for Msg
             &Msg::Registered{ref request, ref registration} => (REGISTERED_ID, request, registration).serialize(serializer),
             &Msg::Unregister{ref request, ref registration} => (UNREGISTER_ID, request, registration).serialize(serializer),
             &Msg::Unregistered{ref request} => (UNREGISTERED_ID, request).serialize(serializer),
-            &Msg::Invocation{ref request, ref registration, ref arguments, ref arguments_kw} => {
+            &Msg::Invocation{ref request, ref registration, ref details, ref arguments, ref arguments_kw} => {
                 if arguments_kw.is_some() {
-                    (INVOCATION_ID, request, registration, arguments, arguments_kw).serialize(serializer)
+                    (INVOCATION_ID, request, registration, details, arguments, arguments_kw).serialize(serializer)
                 } else if arguments.is_some() {
-                    (INVOCATION_ID, request, registration, arguments).serialize(serializer)
+                    (INVOCATION_ID, request, registration, details, arguments).serialize(serializer)
                 } else {
-                    (INVOCATION_ID, request, registration).serialize(serializer)
+                    (INVOCATION_ID, request, registration, details).serialize(serializer)
                 }                
             },
             &Msg::Yield{ref request, ref options, ref arguments, ref arguments_kw} => {
@@ -402,6 +402,7 @@ impl<'de> Deserialize<'de> for Msg {
                 Ok(Msg::Invocation{
                     request: v.next_element()?.ok_or(Error::missing_field("request"))?,
                     registration: v.next_element()?.ok_or(Error::missing_field("registration"))?,
+                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })

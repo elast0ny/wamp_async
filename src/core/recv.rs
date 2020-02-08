@@ -76,6 +76,100 @@ pub async fn event(core: &mut Connection,subscription: WampId,
 
     Status::Ok
 }
+pub async fn registered(core: &mut Connection, request: WampId, rpc_id: WampId) -> Status {
+    
+    let (rpc_func, res) = match core.pending_register.remove(&request) {
+        Some(v) => v, 
+        None => {
+            warn!("Server sent subscribed event for ID we never asked for : {}", request);
+            return Status::Ok;
+        }
+    };
+
+    // Check for ID collision
+    if core.rpc_endpoints.contains_key(&rpc_id) {
+        warn!("Server sent registered ID we already had registered");
+        return Status::Ok;
+    }
+
+    // Add the registered ID to our registered rpc map
+    let _ = core.rpc_endpoints.insert(rpc_id, rpc_func);
+
+    // Send the rpc info back to the requestor
+    let _ = res.send(Ok(rpc_id));
+
+    Status::Ok
+}
+pub async fn unregisterd(core: &mut Connection, request: WampId) -> Status {
+    
+    let res = match core.pending_transactions.remove(&request) {
+        Some(v) => v, 
+        None => {
+            warn!("Server sent unsolicited unregistered ID : {}", request);
+            return Status::Ok;
+        }
+    };
+
+    // Send the event queue back to the requestor
+    let _ = res.send(Ok(None));
+
+    Status::Ok
+}
+pub async fn invocation(core: &mut Connection,
+    request: WampId,
+    registration: WampId,
+    _details: WampDict,
+    arguments: Option<WampList>,
+    arguments_kw: Option<WampDict>
+) -> Status {
+    let rpc_func = match core.rpc_endpoints.get(&registration) {
+        Some(e) => e,
+        None => {
+            warn!("Server sent invocation for rpc ID but we do not have this endpoint : {}", registration);
+            return Status::Ok;
+        }
+    };
+
+    let ctl_channel = core.ctl_sender.clone();
+    let func_future = rpc_func(arguments, arguments_kw);
+
+    // Forward the event to the client
+    if let Err(_) = core.rpc_event_queue_w.send(Box::pin(async move {
+        match ctl_channel.send(Request::InvocationResult {
+            request: request,
+            res: func_future.await,
+        }) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(From::from("Event loop has died !".to_string())), 
+        }
+    })) {
+        warn!("Client not listenning to rpc events but got invocation for rpc ID {}", registration);
+        // TODO : Should we be nice and send an UNSUBSCRIBE to the server ?
+    }
+
+    Status::Ok
+}
+pub async fn call_result(core: &mut Connection, request: WampId,
+    _details: WampDict,
+    arguments: Option<WampList>,
+    arguments_kw: Option<WampDict>
+) -> Status {
+    let res = match core.pending_call.remove(&request) {
+        Some(r) => r,
+        None => {
+            warn!("Server sent result for CALL we never sent : request id {}", request);
+            return Status::Ok;
+        }
+    };
+
+    // Forward the event to the client
+    if let Err(_) = res.send(Ok((arguments, arguments_kw))) {
+        warn!("Client not waiting for call result id {}", request);
+        // TODO : Should we be nice and send an UNSUBSCRIBE to the server ?
+    }
+
+    Status::Ok
+}
 // Handles an error sent by the peer
 pub async fn error(core: &mut Connection, typ: WampInteger,
     request: WampId,
@@ -97,26 +191,36 @@ pub async fn error(core: &mut Connection, typ: WampInteger,
             };
             let _ = res.send(Err(error));      
         },
-        UNSUBSCRIBE_ID => {
+        REGISTER_ID => {
+            let (_, res) = match core.pending_register.remove(&request) {
+                Some(r) => r,
+                None => {
+                    warn!("Received error for RPC register message we never sent");
+                    return Status::Ok;
+                }
+            };
+            let _ = res.send(Err(error));   
+        },
+        CALL_ID => {
+            let res = match core.pending_call.remove(&request) {
+                Some(r) => r,
+                None => {
+                    warn!("Received error for CALL message we never sent");
+                    return Status::Ok;
+                }
+            };
+            let _ = res.send(Err(error));   
+        },
+        PUBLISH_ID | UNSUBSCRIBE_ID | UNREGISTER_ID => {
             let res = match core.pending_transactions.remove(&request) {
                 Some(r) => r,
                 None => {
-                    warn!("Received error for unsubscribe message we never sent");
+                    warn!("Received error for message we never sent");
                     return Status::Ok;
                 }
             };
             let _ = res.send(Err(error));
         },
-        PUBLISH_ID => {
-            let res = match core.pending_transactions.remove(&request) {
-                Some(r) => r,
-                None => {
-                    warn!("Received error for publish message we never sent");
-                    return Status::Ok;
-                }
-            };
-            let _ = res.send(Err(error));
-        }
         _ => {},
     };
     Status::Ok

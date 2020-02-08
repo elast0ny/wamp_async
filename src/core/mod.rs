@@ -23,9 +23,26 @@ pub enum Status {
     Ok,
 }
 
-pub type JoinResult = Sender<Result<(WampId, HashMap<WampString, Arg>), WampError>>;
-pub type SubscriptionQueue = UnboundedReceiver<(WampId, WampArgs, WampKwArgs)>;
-pub type SubscribeResult = Sender<Result<(WampId, SubscriptionQueue), WampError>>;
+pub type JoinResult = Sender<Result<(
+    WampId, // Session ID
+    HashMap<WampString, Arg> // Server roles
+), WampError>>;
+pub type SubscriptionQueue = UnboundedReceiver<(
+    WampId, // Publish event ID
+    WampArgs, // Publish args
+    WampKwArgs
+)>; // publish kwargs
+pub type PendingSubResult = Sender<Result<(
+    WampId, //Subcription ID
+    SubscriptionQueue // Queue for incoming events
+), WampError>>;
+pub type PendingRegisterResult = Sender<Result<
+    WampId, // Registration ID
+    WampError>>;
+pub type PendingCallResult = Sender<Result<(
+    WampArgs, // Return args
+    WampKwArgs // Return kwargs
+), WampError>>;
 
 pub struct Connection {
     /// Generic transport
@@ -33,23 +50,34 @@ pub struct Connection {
     /// Generic serializer
     serializer: Box<dyn SerializerImpl + Send + Sync>,
     /// Holds the request_id queues waiting for messages
-    ctl_channel: Option<UnboundedReceiver<Request>>,
+    ctl_sender: UnboundedSender<Request>,
+    ctl_channel: Option<UnboundedReceiver<Request>>, //Wrapped in option so we can give ownership to eventloop
 
     /// Holds set of pending requests
     pending_requests: HashSet<WampId>,
-    
     /// Holds generic transactions that can succeed/fail
     pending_transactions: HashMap<WampId, Sender<Result<Option<WampId>, WampError>>>,
 
-    /// Holds the subscription requests sent to the server
-    pending_sub: HashMap<WampId, SubscribeResult>,
+    /// Pending subscription requests sent to the server
+    pending_sub: HashMap<WampId, PendingSubResult>,
+    /// Current subscriptions
     subscriptions: HashMap<WampId, UnboundedSender<(WampId, WampArgs, WampKwArgs)>>,
+
+    /// Pending RPC registration requests sent to the server
+    pending_register: HashMap<WampId, (RpcFunc, PendingRegisterResult)>,
+    /// Currently registered RPC endpoints
+    rpc_endpoints: HashMap<WampId, RpcFunc>,
+    /// Queue passed back to the client caller to handle rpc events
+    pub rpc_event_queue_r: Option<UnboundedReceiver<GenericFuture>>,
+    rpc_event_queue_w: UnboundedSender<GenericFuture>,
+
+    pending_call: HashMap<WampId, PendingCallResult>,
 }
 
 impl Connection {
 
     /// Establishes a connection with a WAMP server
-    pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: UnboundedReceiver<Request>/*, peer_handler: PeerMsgHandler*/) -> Result<Self, WampError> {        
+    pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>)) -> Result<Self, WampError> {        
         // Connect to the router using the requested transport
         let (sock, serializer_type) = match uri.scheme() {
             "ws" | "wss" => {
@@ -74,16 +102,26 @@ impl Connection {
             _ => Box::new(json::JsonSerializer {}),
         };
 
+        //let (rpc_result_w, rpc_result_r) = mpsc::unbounded_channel();
+        let (rpc_event_queue_w, rpc_event_queue_r) = mpsc::unbounded_channel();
+
         Ok(
             Connection {
                 sock,
                 serializer,
-                ctl_channel: Some(ctl_channel),
+                ctl_sender: ctl_channel.0,
+                ctl_channel: Some(ctl_channel.1),
                 pending_requests: HashSet::new(),
                 pending_transactions: HashMap::new(),
 
                 pending_sub: HashMap::new(),
                 subscriptions: HashMap::new(),
+
+                pending_register: HashMap::new(),
+                rpc_endpoints: HashMap::new(),
+                rpc_event_queue_r: Some(rpc_event_queue_r),
+                rpc_event_queue_w,
+                pending_call: HashMap::new(),
             }
         )
     }
@@ -98,10 +136,9 @@ impl Connection {
                 msg = self.recv() => {
                     self.handle_peer_msg(msg?).await
                 },
-                // Peer wants to send a message
                 req = ctl_channel.recv() => {
                     let req = req.ok_or::<WampError>(WampError::RealmClientDied)?;
-                    self.handle_peer_request(req).await
+                    self.handle_local_request(req).await
                 }
             } {
                 Status::Shutdown => break,
@@ -128,6 +165,10 @@ impl Connection {
             Msg::Unsubscribed{request} => recv::unsubscribed(self, request).await,
             Msg::Published{request, publication} => recv::published(self, request, publication).await,
             Msg::Event{subscription, publication, details, arguments, arguments_kw} => recv::event(self, subscription, publication, details, arguments, arguments_kw).await,
+            Msg::Registered{request, registration} => recv::registered(self, request, registration).await,
+            Msg::Unregistered{request} => recv::unregisterd(self, request).await,
+            Msg::Invocation{request, registration, details, arguments, arguments_kw} => recv::invocation(self, request, registration, details, arguments, arguments_kw).await,
+            Msg::Result{request, details, arguments, arguments_kw} => recv::call_result(self, request, details, arguments, arguments_kw).await,
             Msg::Error{typ, request, details, error, arguments, arguments_kw} => recv::error(self, typ, request, details, error, arguments, arguments_kw).await,
             _ => {
                 warn!("Recevied unhandled message {:?}", msg);
@@ -137,18 +178,23 @@ impl Connection {
     }
 
     /// Handles the basic ways one can interact with the peer
-    async fn handle_peer_request(&mut self, req: Request) -> Status {
+    async fn handle_local_request(&mut self, req: Request) -> Status {
         // Forward the request the the implementor
         match req {
             Request::Shutdown => Status::Shutdown,
             Request::Join{uri, roles, agent_str, res} => send::join_realm(self, uri, roles, agent_str, res).await,
             Request::Leave{res} => send::leave_realm(self, res).await,
-            Request::Subscribe {uri, res} => send::subscribe(self, uri, res).await,
+            Request::Subscribe{uri, res} => send::subscribe(self, uri, res).await,
             Request::Unsubscribe {sub_id, res} => send::unsubscribe(self, sub_id, res).await,
-            Request::Publish{uri, options, arguments, arguments_kw, res} => send::publish(self, uri, options, arguments, arguments_kw, res).await,            
+            Request::Publish{uri, options, arguments, arguments_kw, res} => send::publish(self, uri, options, arguments, arguments_kw, res).await,
+            Request::Register{uri, res, func_ptr} => send::register(self, uri, res, func_ptr).await,
+            Request::Unregister{rpc_id, res} => send::unregister(self, rpc_id, res).await,
+            Request::InvocationResult{request, res} => send::invoke_yield(self, request, res).await,
+            Request::Call{uri, options, arguments, arguments_kw, res} => send::call(self, uri, options, arguments, arguments_kw, res).await,
         }
     }
 
+    /// Serializes a message and sends it on the transport
     pub async fn send(&mut self, msg: &Msg) -> Result<(), WampError> {
 
         // Serialize the data
@@ -165,6 +211,7 @@ impl Connection {
         Ok(())
     }
 
+    /// Receives a message and deserializes it
     pub async fn recv(&mut self) -> Result<Msg, WampError> {
 
         // Receive a full message from the host
@@ -181,6 +228,7 @@ impl Connection {
         Ok(msg?)
     }
 
+    /// Closes the transport
     pub async fn shutdown(mut self) {
         // Close the transport
         self.sock.close().await;

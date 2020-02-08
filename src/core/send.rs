@@ -20,7 +20,7 @@ pub enum Request {
     },
     Subscribe {
         uri: WampString,
-        res: SubscribeResult,
+        res: PendingSubResult,
     },
     Unsubscribe {
         sub_id: WampId,
@@ -31,8 +31,28 @@ pub enum Request {
         options: WampDict,
         arguments: WampArgs,
         arguments_kw: WampKwArgs,
+        res: Sender<Result<Option<WampId>, WampError>>,
+    },
+    Register {
+        uri: WampString,
+        res: PendingRegisterResult,
+        func_ptr: RpcFunc,
+    },
+    Unregister {
+        rpc_id: WampId,
         res: Sender<Result<Option<WampId>, WampError>>
-    }
+    },
+    InvocationResult {
+        request: WampId,
+        res: Result<(WampArgs, WampKwArgs), WampError>,
+    },
+    Call {
+        uri: WampString,
+        options: WampDict,
+        arguments: WampArgs,
+        arguments_kw: WampKwArgs,
+        res: PendingCallResult,
+    },
 }
 
 /// Handler for any join realm request. This will send a HELLO and wait for the WELCOME response
@@ -119,7 +139,7 @@ pub async fn leave_realm(core: &mut Connection, res: Sender<Result<(), WampError
     return Status::Ok;
 }
 
-pub async fn subscribe(core: &mut Connection, topic: WampString, res: SubscribeResult) -> Status {
+pub async fn subscribe(core: &mut Connection, topic: WampString, res: PendingSubResult) -> Status {
     let request = core.create_request();
 
     if let Err(e) = core.send(
@@ -190,6 +210,112 @@ pub async fn publish(core: &mut Connection, uri: WampString,
     }
 
     core.pending_transactions.insert(request, res);
+    
+    return Status::Ok;
+}
+
+pub async fn register(core: &mut Connection, uri: WampString, res: PendingRegisterResult, func_ptr: RpcFunc) -> Status {
+    let request = core.create_request();
+
+    if let Err(e) = core.send(
+        &Msg::Register {
+            request,
+            procedure: uri,            
+            options: WampDict::new(),
+        }
+    ).await {
+        core.pending_requests.remove(&request);
+        let _ = res.send(Err(e));
+        return Status::Shutdown;
+    }
+    
+    core.pending_register.insert(request, (func_ptr, res));    
+    return Status::Ok;
+}
+
+pub async fn unregister(core: &mut Connection, rpc_id: WampId, res: Sender<Result<Option<WampId>, WampError>>) -> Status {
+    
+    match core.rpc_endpoints.remove(&rpc_id) {
+        Some(_v) => {/*drop*/},
+        None => {
+            warn!("Tried to unregister RPC using invalid ID : {}", rpc_id);
+            let _ = res.send(Err(From::from("Tried to unregister RPC using invalid ID".to_string())));
+            return Status::Ok;
+        }
+    };
+
+    let request = core.create_request();
+
+    if let Err(e) = core.send(
+        &Msg::Unregister {
+            request,
+            registration: rpc_id,
+        }
+    ).await {
+        core.pending_requests.remove(&request);
+        let _ = res.send(Err(e));
+        return Status::Shutdown;
+    }
+
+    core.pending_transactions.insert(request, res);
+    
+    return Status::Ok;
+}
+
+pub async fn invoke_yield(core: &mut Connection, request: WampId,
+    res: Result<(WampArgs, WampKwArgs), WampError>
+) -> Status {
+    
+    let msg: Msg = match res {
+        Ok((arguments,arguments_kw)) => {
+            Msg::Yield {
+                request,
+                options: WampDict::new(),
+                arguments,
+                arguments_kw,
+            }
+        },
+        Err(e) => {
+            Msg::Error {
+                typ: INVOCATION_ID as WampInteger,
+                request,
+                details: WampDict::new(),
+                error: "wamp.async.rs.rpc.failed".to_string(),
+                arguments: Some(vec![Arg::String(format!("{:?}", e))]),
+                arguments_kw: None,
+            }
+        }
+    };
+    if let Err(_) = core.send(&msg).await {
+        return Status::Shutdown;
+    }
+    
+    return Status::Ok;
+}
+
+pub async fn call(core: &mut Connection, uri: WampString,
+    options: WampDict,
+    arguments: WampArgs,
+    arguments_kw: WampKwArgs,
+    res: PendingCallResult) -> Status {
+    
+    let request = core.create_request();
+
+    if let Err(e) = core.send(
+        &Msg::Call {
+            request,
+            procedure: uri,
+            options,
+            arguments,
+            arguments_kw,
+        }
+    ).await {
+        core.pending_requests.remove(&request);
+        let _ = res.send(Err(e));
+        return Status::Shutdown;
+    }
+
+    core.pending_call.insert(request, res);
     
     return Status::Ok;
 }

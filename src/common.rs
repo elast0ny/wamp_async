@@ -1,6 +1,10 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::error::Error;
+use std::pin::Pin;
+use std::future::Future;
+
+use crate::error::*;
 
 use serde::{Serialize, Deserialize};
 use log::*;
@@ -122,3 +126,8 @@ pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
     
     return true;
 }
+
+
+pub type GenericFuture = Pin<Box<dyn Future<Output = Result<(), WampError>> + Send>>;
+pub type RpcFuture = Pin<Box<dyn Future<Output = Result<(WampArgs, WampKwArgs), WampError>> + Send>>;
+pub type RpcFunc = Box<dyn Fn(WampArgs, WampKwArgs) -> RpcFuture + Send + Sync>;
