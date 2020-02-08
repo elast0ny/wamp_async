@@ -3,7 +3,7 @@
 An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 
 ## Features
-`wamp_async` is primarily written for those who want to write WAMP __client__ applications using async Rust. In fact, there is currently no plan to implement a `wamp_sync` based server.
+`wamp_async` is primarily written for those who want to write WAMP __client__ applications using async Rust. There is currently no plan to implement a `wamp_async` based server.
 
 | Feature | Desciption | Status |
 |---------|------------|--------|
@@ -11,10 +11,10 @@ An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 |Secure Websocket| Websocket over HTTPS | TODO |
 | RawSocket | Use lightweight TCP as the transport | ✔ |
 | Secure RawSocket | RawSocket with TLS | TODO |
-|MsgPack| Use [MessagePack](https://en.wikipedia.org/wiki/MessagePack) for message serialization | TODO |
+|MsgPack| Use [MessagePack](https://en.wikipedia.org/wiki/MessagePack) for message serialization | ✔ |
 |JSON | Uses [JSON](https://en.wikipedia.org/wiki/JSON#Example) for message serialization | ✔ |
 ### Client
-Basic profile :
+#### Basic profile :
 
 | Feature | Desciption | Status |
 |---------|------------|--------|
@@ -23,6 +23,6 @@ Basic profile :
 | Caller | Ability to call RPC endpoints | ✔ |
 | Callee | Ability to register RPC endpoints | ✔ |
 
-Advanced profile:
+#### Advanced profile:
 
 Not implemented yet.

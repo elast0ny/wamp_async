@@ -97,8 +97,9 @@ impl Connection {
             s => return Err(From::from(format!("Unknown uri scheme : {}", s))),
         };
 
-        let serializer = match serializer_type {
+        let serializer: Box<dyn SerializerImpl + Send + Sync> = match serializer_type {
             SerializerType::Json => Box::new(json::JsonSerializer {}),
+            SerializerType::MsgPack => Box::new(msgpack::MsgPackSerializer {}),
             _ => Box::new(json::JsonSerializer {}),
         };
 

@@ -3,6 +3,7 @@ use quick_error::*;
 use crate::message::Msg;
 
 pub mod json;
+pub mod msgpack;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
