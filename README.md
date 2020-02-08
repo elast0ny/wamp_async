@@ -20,17 +20,9 @@ Basic profile :
 |---------|------------|--------|
 | Publisher | Ability to publish messages on topics | ✔ |
 | Subscriber | Can subscribe and receive events for a topic | ✔ |
-| Caller | Ability to call RPC endpoints | TODO |
-| Callee | Ability to register RPC endpoints | TODO |
-
-Advanced profile:
-
-| Feature | Desciption | Status |
-|---------|------------|--------|
-| Publisher | Ability to publish messages on topics | ✔ |
-| Subscriber | Can subscribe and receive events for a topic | ✔ |
 | Caller | Ability to call RPC endpoints | ✔ |
 | Callee | Ability to register RPC endpoints | ✔ |
 
-### Server
+Advanced profile:
+
 Not implemented yet.
