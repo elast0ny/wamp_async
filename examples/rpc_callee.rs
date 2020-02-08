@@ -12,7 +12,7 @@ lazy_static! {
 // Simply return the rpc arguments
 async fn echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
     println!("peer.echo {:?} {:?}", args, kwargs);
-    RPC_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
+    let _ = RPC_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
     Ok((args, kwargs))
 }
 
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Waiting for 'peer.echo' to be called at least 5 times");
     loop {
         let call_num = RPC_CALL_COUNT.load(Ordering::Relaxed);
-        if call_num > 5 {
+        if call_num >= 5 {
             break;
         }
         std::thread::sleep(std::time::Duration::from_secs(1));

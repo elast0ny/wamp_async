@@ -15,6 +15,7 @@ An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 |JSON | Uses [JSON](https://en.wikipedia.org/wiki/JSON#Example) for message serialization | ✔ |
 ### Client
 Basic profile :
+
 | Feature | Desciption | Status |
 |---------|------------|--------|
 | Publisher | Ability to publish messages on topics | ✔ |
@@ -23,6 +24,7 @@ Basic profile :
 | Callee | Ability to register RPC endpoints | TODO |
 
 Advanced profile:
+
 | Feature | Desciption | Status |
 |---------|------------|--------|
 | Publisher | Ability to publish messages on topics | ✔ |
