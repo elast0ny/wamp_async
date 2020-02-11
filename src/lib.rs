@@ -9,4 +9,4 @@ mod client;
 pub use serializer::SerializerType;
 pub use error::*;
 pub use common::*;
-pub use client::{Client, ClientConfig};
+pub use client::{Client, ClientConfig, ClientState};

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use lazy_static::*;
 
-use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType};
+use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType, ClientState};
 
 lazy_static! {
     static ref RPC_CALL_COUNT: AtomicU8 = {AtomicU8::new(0)};
@@ -59,18 +59,25 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Waiting for 'peer.echo' to be called at least 5 times");
     loop {
         let call_num = RPC_CALL_COUNT.load(Ordering::Relaxed);
-        if call_num >= 5 {
+        if call_num >= 5 || !client.is_connected() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 
-    // unregister the rpc endpoint
+    // Client should not have disconnected
+    if let ClientState::Disconnected(Err(e)) = client.get_status() {
+        println!("Client disconnected because of : {:?}", e);
+        return Err(From::from("Unexpected disconnect".to_string()));
+    }
+
     client.unregister(rpc_id).await?;
 
     println!("Leaving realm");
     client.leave_realm().await?;
 
     client.disconnect().await;
+
+
     Ok(())
 }

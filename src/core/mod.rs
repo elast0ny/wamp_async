@@ -48,6 +48,7 @@ pub struct Core {
     /// Generic transport
     sock: Box<dyn Transport + Send>,
     valid_session: bool,
+    core_res: UnboundedSender<Result<(), WampError>>,
     /// Generic serializer
     serializer: Box<dyn SerializerImpl + Send>,
     /// Holds the request_id queues waiting for messages
@@ -78,7 +79,7 @@ pub struct Core {
 impl Core {
 
     /// Establishes a connection with a WAMP server
-    pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>)) -> Result<Self, WampError> {        
+    pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>), core_res: UnboundedSender<Result<(), WampError>>) -> Result<Self, WampError> {        
         // Connect to the router using the requested transport
         let (sock, serializer_type) = match uri.scheme() {
             "ws" | "wss" => {
@@ -112,6 +113,7 @@ impl Core {
         Ok(
             Core {
                 sock,
+                core_res,
                 valid_session: false,
                 serializer,
                 ctl_sender: ctl_channel.0,
@@ -132,9 +134,10 @@ impl Core {
     }
 
     /// Event loop that handles outbound/inboud events
-    pub async fn event_loop(mut self) -> Result<(), WampError> {
+    pub async fn event_loop(mut self) {
         let mut ctl_channel = self.ctl_channel.take().unwrap();
-
+        
+        self.core_res.send(Ok(()));
         loop {
             match select! {
                 // Peer sent us a message
@@ -147,24 +150,36 @@ impl Core {
                             treat a recv() error as expected */
                             if self.valid_session {
                                 error!("Failed to recv : {:?}", e);
+                                self.core_res.send(Err(e));
                             }
+                            
                             break;
                         },
                         Ok(m) => self.handle_peer_msg(m).await,
                     }
                 },
                 req = ctl_channel.recv() => {
-                    let req = req.ok_or::<WampError>(WampError::RealmClientDied)?;
+                    let req = match req {
+                        Some(r) => r,
+                        None => {
+                            self.core_res.send(Err(WampError::ClientDied));
+                            break;
+                        }
+                    };
                     self.handle_local_request(req).await
                 }
             } {
-                Status::Shutdown => break,
+                Status::Shutdown => {
+                    self.core_res.send(Ok(()));
+                    break;
+                },
                 Status::Ok => {},
             }
         }
         debug!("Event loop shutting down !");
+        
         self.shutdown().await;
-        Ok(())
+        
     }
 
     /// Handles unsolicited messages from the peer (events, rpc calls, etc...)
@@ -261,6 +276,5 @@ impl Core {
             request = rand::random();
         }
         request
-    }
-    
+    }   
 }

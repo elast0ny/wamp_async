@@ -3,8 +3,8 @@ use std::collections::HashSet;
 
 use log::*;
 use url::*;
-use tokio::sync::{mpsc, mpsc::UnboundedSender, mpsc::UnboundedReceiver};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, mpsc::UnboundedSender, mpsc::UnboundedReceiver, mpsc::error::TryRecvError};
+use tokio::sync::{oneshot};
 
 use crate::error::*;
 use crate::serializer::SerializerType;
@@ -94,12 +94,20 @@ pub struct Client {
     config: ClientConfig,
     /// Generic transport
     conn: Option<Core>,
+    core_res: UnboundedReceiver<Result<(), WampError>>,
+    core_status: ClientState,
     /// Roles supported by the server
     server_roles: HashSet<String>,
     /// Current Session ID
     session_id: Option<WampId>,
     /// Channel to send requests to the event loop
     ctl_channel: UnboundedSender<Request>,
+}
+
+pub enum ClientState {
+    NoEventLoop,
+    Running,
+    Disconnected(Result<(), WampError>),
 }
 
 impl Client {
@@ -118,10 +126,11 @@ impl Client {
         };
 
         let (ctl_channel, ctl_receiver) = mpsc::unbounded_channel();
+        let (core_res_w, core_res) = mpsc::unbounded_channel();
 
         let ctl_sender = ctl_channel.clone();
         // Establish a connection
-        let conn = Core::connect(&uri, &config, (ctl_sender, ctl_receiver)).await?;
+        let conn = Core::connect(&uri, &config, (ctl_sender, ctl_receiver), core_res_w).await?;
 
         Ok(Client {
             config,
@@ -129,13 +138,15 @@ impl Client {
             server_roles: HashSet::new(),
             session_id: None,
             ctl_channel,
+            core_res,
+            core_status: ClientState::NoEventLoop,
         })
     }
     
     /// Returns a future which will run the event loop. The caller is responsible for running it.
     pub fn event_loop(&mut self) -> Result<
         (
-            GenericFuture, 
+            std::pin::Pin<Box<dyn Future<Output = ()> + Send>>, 
             Option<UnboundedReceiver<GenericFuture>>
         ), WampError> {
         
@@ -156,10 +167,17 @@ impl Client {
     /// Sends a join realm request to the core event loop
     pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
 
+        // Make sure we are still connected to a server
+        if !self.is_connected() {
+            return Err(From::from("The client is currently not connected".to_string()));
+        }
+
+        // Make sure we arent already part of a realm
         if self.session_id.is_some() {
             return Err(From::from(format!("join_realm('{}') : Client already joined to a realm", realm.as_ref())));
         }
 
+        // Send a request for the core to perform the action
         let (res_sender, res) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Join {
             uri: realm.as_ref().to_string(),
@@ -174,6 +192,7 @@ impl Client {
             return Err(From::from(format!("Core never received our request : {}", e)));
         }
 
+        // Wait for the request results
         let (session_id, mut server_roles) = match res.await {
             Ok(r) => r?,
             Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
@@ -187,7 +206,6 @@ impl Client {
 
         // Set the current session
         self.session_id = Some(session_id);
-
         debug!("Connected with session_id {:?} !", session_id);
 
         Ok(())
@@ -195,6 +213,11 @@ impl Client {
 
     /// Sends a leave realm request to the core event loop
     pub async fn leave_realm(&mut self) -> Result<(), WampError> {
+
+         // Make sure we are still connected to a server
+         if !self.is_connected() {
+            return Err(From::from("The client is currently not connected".to_string()));
+        }
 
         // Nothing to do if not currently in a session
         if self.session_id.take().is_none() {
@@ -352,11 +375,53 @@ impl Client {
 
         res
     }
+
+    pub fn get_status(&mut self) -> &ClientState {
+        let new_status = self.core_res.try_recv();
+
+        match new_status {
+            Ok(state) => {
+                if let Err(e) = state {
+                    // Error occured
+                    self.core_status = ClientState::Disconnected(Err(e));
+                } else {
+                    //Transition to running or disconnected depending on previous state
+                    self.core_status = match self.core_status {
+                        ClientState::NoEventLoop => ClientState::Running,
+                        _ => ClientState::Disconnected(Ok(())),
+                    };
+                }
+            },
+            Err(TryRecvError::Closed) => {
+                self.core_status = ClientState::Disconnected(Err(From::from(format!("Core has exited unexpectedly..."))));
+            },
+            Err(TryRecvError::Empty) => {},
+        }
+
+        &self.core_status
+    }
+
+    pub fn is_connected(&mut self) -> bool {
+        match self.get_status() {
+            ClientState::Running => true,
+            _ => false,
+        }
+    }
+
     /// Cleanly closes a connection with the server
     pub async fn disconnect(mut self) {
-        // Cleanly leave realm
-        let _ = self.leave_realm().await;
-        // Stop the eventloop and disconnect from server
-        let _ = self.ctl_channel.send(Request::Shutdown);
+        if self.is_connected() {
+            // Cleanly leave realm
+            let _ = self.leave_realm().await;
+            // Stop the eventloop and disconnect from server
+            let _ = self.ctl_channel.send(Request::Shutdown);
+
+            // Wait for return status from core
+            match self.core_res.recv().await {
+                Some(Err(e)) => error!("Error while shutting down : {:?}", e),
+                None => error!("Core never sent a status after shutting down..."),
+                _ => {},
+            }
+        }
     }
 }

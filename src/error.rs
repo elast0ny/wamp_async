@@ -37,8 +37,8 @@ quick_error! {
             description("An unexpected WAMP message was received")
             display(_self) -> ("{} : {}", _self, e)
         }
-        RealmClientDied {
-            description("The client handling messages for a realm has died")
+        ClientDied {
+            description("The client has exited without sending Shutdown")
         }
         RequestIdCollision {
             description("There was a collision with a unique request id")
