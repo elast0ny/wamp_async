@@ -7,10 +7,10 @@ An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 
 | Feature | Desciption | Status |
 |---------|------------|--------|
-|Websocket| Use [websocket](https://en.wikipedia.org/wiki/WebSocket) as the transport | TODO |
-|Secure Websocket| Websocket over HTTPS | TODO |
+|Websocket| Use [websocket](https://en.wikipedia.org/wiki/WebSocket) as the transport | ✔ |
+|Secure Websocket| Websocket over HTTPS | ✔ |
 | RawSocket | Use lightweight TCP as the transport | ✔ |
-| Secure RawSocket | RawSocket with TLS | TODO |
+| Secure RawSocket | RawSocket with TLS | ✔ |
 |MsgPack| Use [MessagePack](https://en.wikipedia.org/wiki/MessagePack) for message serialization | ✔ |
 |JSON | Uses [JSON](https://en.wikipedia.org/wiki/JSON#Example) for message serialization | ✔ |
 ### Client

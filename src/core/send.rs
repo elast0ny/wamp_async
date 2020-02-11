@@ -56,7 +56,7 @@ pub enum Request {
 }
 
 /// Handler for any join realm request. This will send a HELLO and wait for the WELCOME response
-pub async fn join_realm(core: &mut Connection, uri: WampString, roles: HashSet<ClientRole>, mut agent_str: Option<WampString>, res: JoinResult) -> Status {
+pub async fn join_realm(core: &mut Core, uri: WampString, roles: HashSet<ClientRole>, mut agent_str: Option<WampString>, res: JoinResult) -> Status {
     let mut details: WampDict = WampDict::new();
     let mut client_roles: WampDict = WampDict::new();
     // Add all of our roles
@@ -97,12 +97,15 @@ pub async fn join_realm(core: &mut Connection, uri: WampString, roles: HashSet<C
     };
 
     // Return the pertinent info to the caller
+    core.valid_session = true;
     let _ = res.send(Ok((session_id, server_roles)));
     return Status::Ok;
 }
 
 /// Handler for any leave realm request. This function will send a GOODBYE and wait for a GOODBYE response
-pub async fn leave_realm(core: &mut Connection, res: Sender<Result<(), WampError>>) -> Status {    
+pub async fn leave_realm(core: &mut Core, res: Sender<Result<(), WampError>>) -> Status {    
+
+    core.valid_session = false;
 
     if let Err(e) = core.send(
         &Msg::Goodbye {
@@ -114,32 +117,11 @@ pub async fn leave_realm(core: &mut Connection, res: Sender<Result<(), WampError
         return Status::Shutdown;
     }
 
-    // TODO Bugfix : the next reply we get from the server is not necessarily for our GOODBYE we just sent
-    let resp = match core.recv().await {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = res.send(Err(e));
-            return Status::Shutdown;
-        },
-    };
-
-    match resp {
-        Msg::Goodbye{reason, details:_} => {
-            if reason != "wamp.close.goodbye_and_out" {
-                warn!("Server respond with GOODBYE to our GOODBYE but with unexpected reason : {}", reason);
-            }
-        },
-        _ => {
-            let _ = res.send(Err(From::from("Server did not respond with GOODBYE :(".to_string())));
-            return Status::Shutdown;
-        }
-    };
-
     let _ = res.send(Ok(()));
     return Status::Ok;
 }
 
-pub async fn subscribe(core: &mut Connection, topic: WampString, res: PendingSubResult) -> Status {
+pub async fn subscribe(core: &mut Core, topic: WampString, res: PendingSubResult) -> Status {
     let request = core.create_request();
 
     if let Err(e) = core.send(
@@ -158,7 +140,7 @@ pub async fn subscribe(core: &mut Connection, topic: WampString, res: PendingSub
     return Status::Ok;
 }
 
-pub async fn unsubscribe(core: &mut Connection, sub_id: WampId, res: Sender<Result<Option<WampId>, WampError>>) -> Status {
+pub async fn unsubscribe(core: &mut Core, sub_id: WampId, res: Sender<Result<Option<WampId>, WampError>>) -> Status {
     
     match core.subscriptions.remove(&sub_id) {
         Some(_v) => {/*drop*/},
@@ -187,7 +169,7 @@ pub async fn unsubscribe(core: &mut Connection, sub_id: WampId, res: Sender<Resu
     return Status::Ok;
 }
 
-pub async fn publish(core: &mut Connection, uri: WampString,
+pub async fn publish(core: &mut Core, uri: WampString,
     options: WampDict,
     arguments: WampArgs,
     arguments_kw: WampKwArgs,
@@ -214,7 +196,7 @@ pub async fn publish(core: &mut Connection, uri: WampString,
     return Status::Ok;
 }
 
-pub async fn register(core: &mut Connection, uri: WampString, res: PendingRegisterResult, func_ptr: RpcFunc) -> Status {
+pub async fn register(core: &mut Core, uri: WampString, res: PendingRegisterResult, func_ptr: RpcFunc) -> Status {
     let request = core.create_request();
 
     if let Err(e) = core.send(
@@ -233,7 +215,7 @@ pub async fn register(core: &mut Connection, uri: WampString, res: PendingRegist
     return Status::Ok;
 }
 
-pub async fn unregister(core: &mut Connection, rpc_id: WampId, res: Sender<Result<Option<WampId>, WampError>>) -> Status {
+pub async fn unregister(core: &mut Core, rpc_id: WampId, res: Sender<Result<Option<WampId>, WampError>>) -> Status {
     
     match core.rpc_endpoints.remove(&rpc_id) {
         Some(_v) => {/*drop*/},
@@ -262,7 +244,7 @@ pub async fn unregister(core: &mut Connection, rpc_id: WampId, res: Sender<Resul
     return Status::Ok;
 }
 
-pub async fn invoke_yield(core: &mut Connection, request: WampId,
+pub async fn invoke_yield(core: &mut Core, request: WampId,
     res: Result<(WampArgs, WampKwArgs), WampError>
 ) -> Status {
     
@@ -293,7 +275,7 @@ pub async fn invoke_yield(core: &mut Connection, request: WampId,
     return Status::Ok;
 }
 
-pub async fn call(core: &mut Connection, uri: WampString,
+pub async fn call(core: &mut Core, uri: WampString,
     options: WampDict,
     arguments: WampArgs,
     arguments_kw: WampKwArgs,

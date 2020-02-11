@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use lazy_static::*;
 
-use wamp_async::{Client, WampArgs, WampKwArgs, WampError};
+use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType};
 
 lazy_static! {
     static ref RPC_CALL_COUNT: AtomicU8 = {AtomicU8::new(0)};
@@ -19,7 +19,16 @@ async fn echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArg
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect("tcp://localhost:8081", None).await?;
+    let mut client = Client::connect(
+        "wss://localhost:8080",
+        Some(
+            ClientConfig::new()
+                // Allow invalid/self signed certs
+                .set_ssl_verify(false)
+                // Use MsgPack first or fallback to Json
+                .set_serializers(vec![SerializerType::MsgPack, SerializerType::Json])
+        )
+    ).await?;
     println!("Connected !!");
 
     let (evt_loop, rpc_event_queue) = client.event_loop()?;

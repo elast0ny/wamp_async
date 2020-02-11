@@ -1,10 +1,12 @@
 use std::error::Error;
-use wamp_async::Client;
+use wamp_async::{Client, ClientConfig};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect("tcp://localhost:8081", None).await?;
+    let mut client = Client::connect("tcps://localhost:8081", Some(
+        ClientConfig::new().set_ssl_verify(false)
+    )).await?;
     println!("Connected !!");
 
     // Spawn the event loop
@@ -31,7 +33,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if cur_event_num >= max_events {
                 break;
             }
-            tokio::time::delay_for(std::time::Duration::from_secs(2)).await
+            tokio::time::delay_for(std::time::Duration::from_secs(1)).await
         }  
     // Start as a subscriber
     } else {
@@ -53,6 +55,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Leaving realm");
     client.leave_realm().await?;
 
+    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
     client.disconnect().await;
     Ok(())
 }

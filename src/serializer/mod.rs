@@ -14,6 +14,28 @@ pub enum SerializerType {
     // 3 - 15 reserved
 }
 
+impl SerializerType {
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            &SerializerType::Json => "wamp.2.json",
+            &SerializerType::MsgPack => "wamp.2.msgpack",
+            _ => "wamp.2.invalid",
+        }
+    }
+
+    pub fn from_str<T: AsRef<str>>(in_str: T) -> Self {
+        let s = in_str.as_ref();
+
+        if s == SerializerType::Json.to_str() {
+            SerializerType::Json
+        } else if s == SerializerType::MsgPack.to_str() {
+            SerializerType::MsgPack 
+        } else {
+            SerializerType::Invalid
+        }
+    }
+}
+
 quick_error! {
     #[derive(Debug)]
     pub enum SerializerError {

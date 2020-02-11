@@ -5,7 +5,7 @@ pub mod tcp;
 pub use tcp::*;
 
 pub mod websocket;
-pub use websocket as ws;
+pub use crate::transport::websocket as ws;
 pub use ws::*;
 
 use crate::serializer::SerializerType;
@@ -23,17 +23,6 @@ pub trait Transport {
 quick_error! {
     #[derive(Debug)]
     pub enum TransportError {
-        NotImplemented {
-            description("Transport not implemented")
-        }
-        FaildOperation(e: std::io::Error) {
-            from()
-            description("An operation on the transport failed")
-            display(_self) -> ("{} : {}", _self, e)
-        }
-        InvalidWampMsgHeader {
-            description("Invalid WAMP message header received from the server")
-        }
         MaximumServerConn {
             description("Server hit the maximum connection count")
         }
@@ -50,6 +39,12 @@ quick_error! {
         }
         ConnectionFailed {
             description("Failed to negotiate connection with the server")
+        }
+        SendFailed {
+            description("Failed to send message to peer")
+        }
+        ReceiveFailed {
+            description("Failed to receive message from peer")
         }
     }
 }

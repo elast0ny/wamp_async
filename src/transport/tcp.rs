@@ -2,6 +2,8 @@ use log::*;
 
 use async_trait::async_trait;
 use tokio::net::TcpStream;
+use native_tls::TlsConnector;
+use tokio_tls;
 use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
 use crate::ClientConfig;
@@ -205,12 +207,56 @@ impl MsgPrefix {
     }
 }
 
+enum SockWrapper {
+    Plain(TcpStream),
+    Tls(tokio_tls::TlsStream<TcpStream>),
+}
+impl SockWrapper {
+    pub fn close(&mut self) {
+        let sock = match self {
+            SockWrapper::Plain(ref mut s) => s,
+            SockWrapper::Tls(s) => s.get_mut(),
+        };
+
+        match sock.shutdown() {_=>{},};
+    }
+}
+
+impl SockWrapper {
+    pub async fn write_all(&mut self, bytes: &[u8]) -> Result<(), TransportError> {
+        let res = match self {
+            SockWrapper::Plain(ref mut s) => s.write_all(bytes).await,
+            SockWrapper::Tls(s) => s.write_all(bytes).await,
+        };
+
+        if let Err(e) = res {
+            debug!("Failed to send on RawSocket : {:?}", e);
+            return Err(TransportError::SendFailed);
+        }
+        
+        Ok(())
+    }
+
+    pub async fn read_exact(&mut self, out_bytes: &mut[u8]) -> Result<(), TransportError> {
+        let res = match self {
+            SockWrapper::Plain(ref mut s) => s.read_exact(out_bytes).await,
+            SockWrapper::Tls(s) => s.read_exact(out_bytes).await,
+        };
+
+        if let Err(e) = res {
+            debug!("Failed to recv on RawSocket : {:?}", e);
+            return Err(TransportError::ReceiveFailed);
+        }
+
+        Ok(())
+    }
+}
 struct TcpTransport {
-    sock: TcpStream,
+    sock: SockWrapper,
 }
 impl Drop for TcpTransport {
     fn drop(&mut self) {
-        match self.sock.shutdown(std::net::Shutdown::Both) {_=>{/*ignore result*/},};
+        self.sock.close();
     }
 }
 
@@ -225,7 +271,7 @@ impl Transport for TcpTransport {
     
         trace!("Send[0x{:X}] : {:?}", payload.len(), payload);
         self.sock.write_all(payload).await?;
-    
+
         Ok(())
     }
     
@@ -240,7 +286,10 @@ impl Transport for TcpTransport {
             // Validate the 4 byte header
             let msg_type = match header.msg_type() {
                 Some(m) => m,
-                None => return Err(TransportError::InvalidWampMsgHeader),
+                None => {
+                    error!("RawSocket message had an invalid header");
+                    return Err(TransportError::ReceiveFailed);
+                },
             };
             
             payload = Vec::with_capacity(header.payload_len() as usize);
@@ -258,11 +307,11 @@ impl Transport for TcpTransport {
     }
 
     async fn close(&mut self) {
-        match self.sock.shutdown(std::net::Shutdown::Both) {_=>{/*ignore result*/},};
+        self.sock.close();
     }
 }
 
-pub async fn connect(host_ip: &str, host_port: u16, config: &ClientConfig) -> Result<(Box<dyn Transport + Send + Sync>, SerializerType), TransportError> {
+pub async fn connect(host_ip: &str, host_port: u16, is_tls: bool, config: &ClientConfig) -> Result<(Box<dyn Transport + Send>, SerializerType), TransportError> {
     
     let host_addr = format!("{}:{}", host_ip, host_port);
     let mut handshake = HandshakeCtx::new();
@@ -274,20 +323,34 @@ pub async fn connect(host_ip: &str, host_port: u16, config: &ClientConfig) -> Re
 
     for serializer in config.get_serializers() {
         trace!("Connecting to host : {}", host_addr);
-        let mut stream = TcpStream::connect(&host_addr).await?;
+        let mut stream = if is_tls {
+            SockWrapper::Tls(connect_tls(host_ip, host_port, config).await?)
+        } else {
+            SockWrapper::Plain(connect_raw(host_ip, host_port).await?)
+        };
         handshake.set_serializer(*serializer);
         trace!("\tSending handshake : {:?}", handshake);
         
         // Preform the WAMP handshake
-        stream.write_all(handshake.as_ref()).await?;
-        stream.read_exact(handshake.srv_resp_bytes()).await?;
+        if let Err(e) = stream.write_all(handshake.as_ref()).await {
+            error!("Failed to send on RawSocket handshake : {:?}", e);
+            return Err(TransportError::ConnectionFailed);
+        }
+        if let Err(e) = stream.read_exact(handshake.srv_resp_bytes()).await {
+            error!("RawSocket fail to receive handshake reply : {}", e);
+            return Err(TransportError::ConnectionFailed);
+        }
 
         if let Err(e) = handshake.validate() {
             match e {
-                TransportError::SerializerNotSupported(e) => {
-                    warn!("Failed connecting with serializer '{:?}'", e);
-                    match stream.shutdown(std::net::Shutdown::Both) {_=>{}};
+                TransportError::SerializerNotSupported(_) => {
+                    warn!("{:?}", e);
+                    stream.close();
                     continue;
+                },
+                TransportError::InvalidMaximumMsgSize(_) => {
+                    error!("{:?}", e);
+                    break;
                 },
                 _ => break,
             };
@@ -301,4 +364,42 @@ pub async fn connect(host_ip: &str, host_port: u16, config: &ClientConfig) -> Re
     }
 
     return Err(TransportError::ConnectionFailed);
+}
+
+pub async fn connect_raw(host_ip: &str, host_port: u16) -> Result<TcpStream, TransportError> {
+    let host_addr = format!("{}:{}", host_ip, host_port);
+
+    match TcpStream::connect(&host_addr).await {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            error!("Failed to connect to server using raw tcp: {:?}", e);
+            return Err(TransportError::ConnectionFailed);
+        },
+    }
+}
+
+
+pub async fn connect_tls(host_url: &str, host_port: u16, cfg: &ClientConfig) -> Result<tokio_tls::TlsStream<TcpStream>, TransportError> {
+    let stream = connect_raw(host_url, host_port).await?;
+    let mut tls_cfg = TlsConnector::builder();
+    
+    if !cfg.get_ssl_verify() {
+        tls_cfg.danger_accept_invalid_certs(true);
+    }
+
+    let cx = match tls_cfg.build() {
+        Ok(c) => c,
+        Err(e) => {
+            error!("Failed to create TLS context : {:?}", e);
+            return Err(TransportError::ConnectionFailed);
+        },
+    };
+    let cx = tokio_tls::TlsConnector::from(cx);
+    match cx.connect(host_url, stream).await {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            error!("Failed to establish TLS handshake : {:?}", e);
+            return Err(TransportError::ConnectionFailed);
+        }
+    }
 }

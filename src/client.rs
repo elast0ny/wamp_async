@@ -16,6 +16,7 @@ pub struct ClientConfig {
     roles: HashSet<ClientRole>,
     serializers: Vec<SerializerType>,
     max_msg_size: u32,
+    ssl_verify: bool
 }
 
 impl ClientConfig {
@@ -31,7 +32,18 @@ impl ClientConfig {
             ].iter().cloned().collect(),
             serializers: vec![SerializerType::Json, SerializerType::MsgPack],
             max_msg_size: 0,
+            ssl_verify: true,
         }
+    }
+
+    /// Sets the agent string
+    pub fn set_agent<T: AsRef<str>>(mut self, agent: T) -> Self {
+        self.agent = String::from(agent.as_ref());
+        self
+    }
+    /// Returns the currently set agent string
+    pub fn get_agent(&self) -> &str {
+        &self.agent
     }
 
     /// Sets the maximum payload size which can be sent over the transport
@@ -50,7 +62,7 @@ impl ClientConfig {
     }
 
     /// Sets the serializers that will be used in order of preference (serializers[0] will be attempted first)
-    pub fn set_serializer_list(mut self, serializers: Vec<SerializerType>) -> Self {
+    pub fn set_serializers(mut self, serializers: Vec<SerializerType>) -> Self {
         self.serializers = serializers;
         self
     }
@@ -67,13 +79,21 @@ impl ClientConfig {
         }
         self
     }
+
+    pub fn set_ssl_verify(mut self, val: bool) -> Self {
+        self.ssl_verify = val;
+        self
+    }
+    pub fn get_ssl_verify(&self) -> bool {
+        self.ssl_verify
+    }
 }
 
 pub struct Client {
     /// Configuration struct used to customize the client
     config: ClientConfig,
     /// Generic transport
-    conn: Option<Connection>,
+    conn: Option<Core>,
     /// Roles supported by the server
     server_roles: HashSet<String>,
     /// Current Session ID
@@ -101,7 +121,7 @@ impl Client {
 
         let ctl_sender = ctl_channel.clone();
         // Establish a connection
-        let conn = Connection::connect(&uri, &config, (ctl_sender, ctl_receiver)).await?;
+        let conn = Core::connect(&uri, &config, (ctl_sender, ctl_receiver)).await?;
 
         Ok(Client {
             config,

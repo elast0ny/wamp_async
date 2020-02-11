@@ -2,7 +2,7 @@
 use log::*;
 use crate::core::*;
 
-pub async fn subscribed(core: &mut Connection, request: WampId, sub_id: WampId) -> Status {
+pub async fn subscribed(core: &mut Core, request: WampId, sub_id: WampId) -> Status {
     
     let res = match core.pending_sub.remove(&request) {
         Some(v) => v, 
@@ -26,7 +26,7 @@ pub async fn subscribed(core: &mut Connection, request: WampId, sub_id: WampId) 
 
     Status::Ok
 }
-pub async fn unsubscribed(core: &mut Connection, request: WampId) -> Status {
+pub async fn unsubscribed(core: &mut Core, request: WampId) -> Status {
     
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v, 
@@ -41,7 +41,7 @@ pub async fn unsubscribed(core: &mut Connection, request: WampId) -> Status {
 
     Status::Ok
 }
-pub async fn published(core: &mut Connection, request: WampId, pub_id: WampId) -> Status {
+pub async fn published(core: &mut Core, request: WampId, pub_id: WampId) -> Status {
     
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v, 
@@ -54,7 +54,7 @@ pub async fn published(core: &mut Connection, request: WampId, pub_id: WampId) -
 
     Status::Ok
 }
-pub async fn event(core: &mut Connection,subscription: WampId,
+pub async fn event(core: &mut Core,subscription: WampId,
     publication: WampId,
     _details: WampDict,
     arguments: Option<WampList>,
@@ -76,7 +76,7 @@ pub async fn event(core: &mut Connection,subscription: WampId,
 
     Status::Ok
 }
-pub async fn registered(core: &mut Connection, request: WampId, rpc_id: WampId) -> Status {
+pub async fn registered(core: &mut Core, request: WampId, rpc_id: WampId) -> Status {
     
     let (rpc_func, res) = match core.pending_register.remove(&request) {
         Some(v) => v, 
@@ -100,7 +100,7 @@ pub async fn registered(core: &mut Connection, request: WampId, rpc_id: WampId) 
 
     Status::Ok
 }
-pub async fn unregisterd(core: &mut Connection, request: WampId) -> Status {
+pub async fn unregisterd(core: &mut Core, request: WampId) -> Status {
     
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v, 
@@ -115,7 +115,7 @@ pub async fn unregisterd(core: &mut Connection, request: WampId) -> Status {
 
     Status::Ok
 }
-pub async fn invocation(core: &mut Connection,
+pub async fn invocation(core: &mut Core,
     request: WampId,
     registration: WampId,
     _details: WampDict,
@@ -149,7 +149,7 @@ pub async fn invocation(core: &mut Connection,
 
     Status::Ok
 }
-pub async fn call_result(core: &mut Connection, request: WampId,
+pub async fn call_result(core: &mut Core, request: WampId,
     _details: WampDict,
     arguments: Option<WampList>,
     arguments_kw: Option<WampDict>
@@ -170,8 +170,28 @@ pub async fn call_result(core: &mut Connection, request: WampId,
 
     Status::Ok
 }
+
+pub async fn goodbye(core: &mut Core, details: WampDict, reason: WampString) -> Status {
+    debug!("Server sent goodbye : {:?} {:?}", details, reason);
+
+    if !core.valid_session && reason == "wamp.close.goodbye_and_out" {
+        Status::Ok
+    } else {
+        debug!("Peer is closing on us !");
+        let _ = core.send(&Msg::Goodbye {
+            details: WampDict::new(),
+            reason: "wamp.close.goodbye_and_out".to_string()
+        }).await;
+        Status::Shutdown
+    }
+}
+
+pub async fn abort(_core: &mut Core, details: WampDict, reason: WampString) -> Status {
+    error!("Server sent abort : {:?} {:?}", details, reason);
+    Status::Shutdown
+}
 // Handles an error sent by the peer
-pub async fn error(core: &mut Connection, typ: WampInteger,
+pub async fn error(core: &mut Core, typ: WampInteger,
     request: WampId,
     details: WampDict,
     error: WampUri,

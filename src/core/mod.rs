@@ -44,11 +44,12 @@ pub type PendingCallResult = Sender<Result<(
     WampKwArgs // Return kwargs
 ), WampError>>;
 
-pub struct Connection {
+pub struct Core {
     /// Generic transport
-    sock: Box<dyn Transport + Send + Sync>,
+    sock: Box<dyn Transport + Send>,
+    valid_session: bool,
     /// Generic serializer
-    serializer: Box<dyn SerializerImpl + Send + Sync>,
+    serializer: Box<dyn SerializerImpl + Send>,
     /// Holds the request_id queues waiting for messages
     ctl_sender: UnboundedSender<Request>,
     ctl_channel: Option<UnboundedReceiver<Request>>, //Wrapped in option so we can give ownership to eventloop
@@ -74,16 +75,16 @@ pub struct Connection {
     pending_call: HashMap<WampId, PendingCallResult>,
 }
 
-impl Connection {
+impl Core {
 
     /// Establishes a connection with a WAMP server
     pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>)) -> Result<Self, WampError> {        
         // Connect to the router using the requested transport
         let (sock, serializer_type) = match uri.scheme() {
             "ws" | "wss" => {
-                ws::connect(&uri).await?
+                ws::connect(uri, &cfg).await?
             },
-            "tcp" => {
+            "tcp" | "tcps" => {
                 let host_port = match uri.port() {
                     Some(p) => p,
                     None => {
@@ -92,12 +93,14 @@ impl Connection {
                 };
 
                 // Perform the TCP connection
-                tcp::connect(uri.host_str().unwrap(), host_port, &cfg).await?
+                tcp::connect(uri.host_str().unwrap(), host_port, !(uri.scheme() == "tcp"), &cfg).await?
             },
             s => return Err(From::from(format!("Unknown uri scheme : {}", s))),
         };
 
-        let serializer: Box<dyn SerializerImpl + Send + Sync> = match serializer_type {
+        debug!("Connected with serializer : {:?}", serializer_type);
+
+        let serializer: Box<dyn SerializerImpl + Send> = match serializer_type {
             SerializerType::Json => Box::new(json::JsonSerializer {}),
             SerializerType::MsgPack => Box::new(msgpack::MsgPackSerializer {}),
             _ => Box::new(json::JsonSerializer {}),
@@ -107,8 +110,9 @@ impl Connection {
         let (rpc_event_queue_w, rpc_event_queue_r) = mpsc::unbounded_channel();
 
         Ok(
-            Connection {
+            Core {
                 sock,
+                valid_session: false,
                 serializer,
                 ctl_sender: ctl_channel.0,
                 ctl_channel: Some(ctl_channel.1),
@@ -135,7 +139,19 @@ impl Connection {
             match select! {
                 // Peer sent us a message
                 msg = self.recv() => {
-                    self.handle_peer_msg(msg?).await
+                    match msg {
+                        Err(e) => {
+                            /* The WAMP spec leaves it up to the server implementation
+                            to decide whether to close a connection or not after a
+                            GOODBYE message (leaving the realm). If we have left the realm,
+                            treat a recv() error as expected */
+                            if self.valid_session {
+                                error!("Failed to recv : {:?}", e);
+                            }
+                            break;
+                        },
+                        Ok(m) => self.handle_peer_msg(m).await,
+                    }
                 },
                 req = ctl_channel.recv() => {
                     let req = req.ok_or::<WampError>(WampError::RealmClientDied)?;
@@ -146,7 +162,7 @@ impl Connection {
                 Status::Ok => {},
             }
         }
-
+        debug!("Event loop shutting down !");
         self.shutdown().await;
         Ok(())
     }
@@ -170,6 +186,8 @@ impl Connection {
             Msg::Unregistered{request} => recv::unregisterd(self, request).await,
             Msg::Invocation{request, registration, details, arguments, arguments_kw} => recv::invocation(self, request, registration, details, arguments, arguments_kw).await,
             Msg::Result{request, details, arguments, arguments_kw} => recv::call_result(self, request, details, arguments, arguments_kw).await,
+            Msg::Goodbye{details, reason} => recv::goodbye(self, details, reason).await,
+            Msg::Abort{details, reason} => recv::abort(self, details, reason).await,
             Msg::Error{typ, request, details, error, arguments, arguments_kw} => recv::error(self, typ, request, details, error, arguments, arguments_kw).await,
             _ => {
                 warn!("Recevied unhandled message {:?}", msg);

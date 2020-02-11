@@ -43,6 +43,7 @@ pub enum Arg {
     Dict(WampDict),
     /// list: a list (array) where items can be again any of this enumeration
     List(WampList),
+    None,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]

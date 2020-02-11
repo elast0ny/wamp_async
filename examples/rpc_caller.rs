@@ -1,10 +1,20 @@
 use std::error::Error;
-use wamp_async::{Client, WampArgs, WampKwArgs, WampError, Arg};
+use wamp_async::{Client, ClientConfig, ClientRole, Arg, SerializerType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect("tcp://localhost:8081", None).await?;
+    let mut client = Client::connect(
+        "wss://localhost:8080",
+        Some(
+            ClientConfig::new()
+                .set_ssl_verify(false)
+                // Restrict our roles
+                .set_roles(vec![ClientRole::Caller])
+                // Only use Json serialization
+                .set_serializers(vec![SerializerType::Json])
+        )
+    ).await?;
     println!("Connected !!");
 
     let (evt_loop, _) = client.event_loop()?;
