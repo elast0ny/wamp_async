@@ -8,21 +8,22 @@ For usage examples, see :
 - [Publisher/Subscriber](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/pubsub.rs)
 ```rust
 match client.publish("peer.heartbeat", None, None, true).await {
-    Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
-    Err(e) => {
-        println!("publish error {}", e);
-        break;
-    }
+    Ok(pub_id) => println!("\tPublish id {:X}", pub_id),
+    Err(e) => println!("publish error {}", e),
+};
+//<...>
+let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat").await?;
+
+match event_queue.recv().await {
+    Some((_pub_id, args, kwargs)) => println!("\tEvent(args: {:?}, kwargs: {:?})", args, kwargs),
+    None => println!("event queue is closed"),
 };
 ```
 - [RPC caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs)
 ```rust
 match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
     Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
-    Err(e) => {
-        println!("Error calling ({:?})", e);
-        break;
-    }
+    Err(e) => println!("Error calling ({:?})", e),
 };
 ```
 - [RPC callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
