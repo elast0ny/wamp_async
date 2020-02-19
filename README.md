@@ -1,6 +1,6 @@
 # wamp_async
-
-An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
+![Lines of Code](https://tokei.rs/b1/gitlab/elast0ny/wamp_async-rs)
+An asynchronous [WAMP](https://wamp-proto.org/) client implementation written in rust.
 
 ## Usage
 
@@ -37,8 +37,6 @@ let rpc_id = client.register("peer.echo", rpc_echo).await?;
 ```
 
 ## Features
-`wamp_async` is primarily written for those who want to write WAMP __client__ applications using async Rust. There is currently no plan to implement a `wamp_async` based server.
-
 | Feature | Desciption | Status |
 |---------|------------|--------|
 |Websocket| Use [websocket](https://en.wikipedia.org/wiki/WebSocket) as the transport | ✔ |
@@ -59,4 +57,15 @@ let rpc_id = client.register("peer.echo", rpc_echo).await?;
 
 #### Advanced profile:
 
-Not implemented yet.
+TODO
+
+## License
+
+ * [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0)
+ * [MIT license](http://opensource.org/licenses/MIT)
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
+dual licensed as above, without any additional terms or conditions.
