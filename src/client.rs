@@ -458,6 +458,31 @@ impl Client {
         }
     }
 
+    /// Blocks the caller until the connection with the server is terminated
+    pub async fn block_until_disconnect(&mut self) -> &ClientState {
+
+        // Wait until the event loop is running
+        match self.get_status() {
+            &ClientState::NoEventLoop => {
+                match self.core_res.recv().await {
+                    Some(Ok(_)) => self.core_status = ClientState::Running,
+                    Some(Err(e)) => self.core_status = ClientState::Disconnected(Err(e)),
+                    None => {},
+                };
+            },
+            &ClientState::Disconnected(_) => return &self.core_status,
+            _ => {},
+        };
+
+        // Wait until the event loop stops
+        match self.core_res.recv().await {
+            Some(s) => self.core_status = ClientState::Disconnected(s),
+            None => {},
+        };
+
+        &self.core_status
+    }
+
     /// Cleanly closes a connection with the server
     pub async fn disconnect(mut self) {
         if self.is_connected() {
