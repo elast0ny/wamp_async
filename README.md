@@ -6,7 +6,7 @@ An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 
 For usage examples, see :
 - [Publisher/Subscriber](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/pubsub.rs)
-```Rust
+```rust
 match client.publish("peer.heartbeat", None, None, true).await {
     Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
     Err(e) => {
@@ -16,7 +16,7 @@ match client.publish("peer.heartbeat", None, None, true).await {
 };
 ```
 - [RPC caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs)
-```Rust
+```rust
 match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
     Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
     Err(e) => {
@@ -26,7 +26,7 @@ match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
 };
 ```
 - [RPC callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
-```Rust
+```rust
 async fn rpc_echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
     println!("peer.echo {:?} {:?}", args, kwargs);
     Ok((args, kwargs))
