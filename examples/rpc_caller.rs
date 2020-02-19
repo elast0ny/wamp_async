@@ -30,7 +30,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     loop {
         println!("Calling 'peer.echo'");
         match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
-            Ok(v) => println!("\tGot {:?} {:?}", v.0, v.1),
+            Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
             Err(e) => {
                 println!("Error calling ({:?})", e);
                 break;

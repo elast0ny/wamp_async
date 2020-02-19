@@ -53,6 +53,7 @@ pub struct Core {
     serializer: Box<dyn SerializerImpl + Send>,
     /// Holds the request_id queues waiting for messages
     ctl_sender: UnboundedSender<Request>,
+    /// Channel for receiving client requests
     ctl_channel: Option<UnboundedReceiver<Request>>, //Wrapped in option so we can give ownership to eventloop
 
     /// Holds set of pending requests
@@ -137,7 +138,8 @@ impl Core {
     pub async fn event_loop(mut self) {
         let mut ctl_channel = self.ctl_channel.take().unwrap();
         
-        self.core_res.send(Ok(()));
+        // Notify the client that we are now running the event loop
+        let _ = self.core_res.send(Ok(()));
         loop {
             match select! {
                 // Peer sent us a message
@@ -150,7 +152,7 @@ impl Core {
                             treat a recv() error as expected */
                             if self.valid_session {
                                 error!("Failed to recv : {:?}", e);
-                                self.core_res.send(Err(e));
+                                let _ = self.core_res.send(Err(e));
                             }
                             
                             break;
@@ -158,11 +160,12 @@ impl Core {
                         Ok(m) => self.handle_peer_msg(m).await,
                     }
                 },
+                // client wants to send a message
                 req = ctl_channel.recv() => {
                     let req = match req {
                         Some(r) => r,
                         None => {
-                            self.core_res.send(Err(WampError::ClientDied));
+                            let _ = self.core_res.send(Err(WampError::ClientDied));
                             break;
                         }
                     };
@@ -170,7 +173,7 @@ impl Core {
                 }
             } {
                 Status::Shutdown => {
-                    self.core_res.send(Ok(()));
+                    let _ = self.core_res.send(Ok(()));
                     break;
                 },
                 Status::Ok => {},

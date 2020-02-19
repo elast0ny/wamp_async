@@ -7,6 +7,7 @@ pub mod msgpack;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
+/// Message serialization algorithms
 pub enum SerializerType {
     Invalid = 0,
     Json = 1,
@@ -15,6 +16,7 @@ pub enum SerializerType {
 }
 
 impl SerializerType {
+    /// Returns the WAMP string representation of the serializer
     pub fn to_str(&self) -> &'static str {
         match self {
             &SerializerType::Json => "wamp.2.json",
@@ -23,6 +25,7 @@ impl SerializerType {
         }
     }
 
+    /// Converts the WAMP serializer string to its enum variant
     pub fn from_str<T: AsRef<str>>(in_str: T) -> Self {
         let s = in_str.as_ref();
 

@@ -22,12 +22,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if let Some(_) = std::env::args().find(|a| a == "pub") {
         loop {
             match client.publish("peer.heartbeat", None, None, true).await {
-                Ok(pub_id) => println!("\tSending hearbeat {:X}", pub_id),
+                Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
                 Err(e) => {
                     println!("publish error {}", e);
                     break;
                 }
-            }
+            };
             cur_event_num += 1;
             //Exit before sleeping
             if cur_event_num >= max_events {

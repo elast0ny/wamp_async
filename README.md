@@ -2,6 +2,39 @@
 
 An asynchronous [WAMP](https://wamp-proto.org/) implementation written in rust.
 
+## Usage
+
+For usage examples, see :
+- [Publisher/Subscriber](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/pubsub.rs)
+```Rust
+match client.publish("peer.heartbeat", None, None, true).await {
+    Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
+    Err(e) => {
+        println!("publish error {}", e);
+        break;
+    }
+};
+```
+- [RPC caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs)
+```Rust
+match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
+    Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
+    Err(e) => {
+        println!("Error calling ({:?})", e);
+        break;
+    }
+};
+```
+- [RPC callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
+```Rust
+async fn rpc_echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
+    println!("peer.echo {:?} {:?}", args, kwargs);
+    Ok((args, kwargs))
+}
+//<...>
+let rpc_id = client.register("peer.echo", rpc_echo).await?;
+```
+
 ## Features
 `wamp_async` is primarily written for those who want to write WAMP __client__ applications using async Rust. There is currently no plan to implement a `wamp_async` based server.
 

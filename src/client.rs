@@ -11,15 +11,32 @@ use crate::serializer::SerializerType;
 pub use crate::common::*;
 use crate::core::*;
 
+/// Options one can set when connecting to a WAMP server
 pub struct ClientConfig {
+    /// Replaces the default user agent string
     agent: String,
+    /// A Set of all the roles the client will support
     roles: HashSet<ClientRole>,
+    /// A priority list of which serializer to use when talking to the server
     serializers: Vec<SerializerType>,
+    /// Sets the maximum message to be sent over the transport
     max_msg_size: u32,
+    /// When using a secure transport, this option disables certificate validation
     ssl_verify: bool
 }
 
 impl ClientConfig {
+    /// Creates a client config with reasonnable defaults
+    /// 
+    /// Roles :
+    /// - [ClientRole::Caller](enum.ClientRole.html#variant.Caller)
+    /// - [ClientRole::Callee](enum.ClientRole.html#variant.Callee)
+    /// - [ClientRole::Publisher](enum.ClientRole.html#variant.Publisher)
+    /// - [ClientRole::Subscriber](enum.ClientRole.html#variant.Subscriber)
+    /// 
+    /// Serializers :
+    /// 1. [SerializerType::Json](enum.SerializerType.html#variant.Json)
+    /// 2. [SerializerType::MsgPack](enum.SerializerType.html#variant.MsgPack)
     pub fn new() -> Self {
         // Config with default values
         ClientConfig {
@@ -36,7 +53,7 @@ impl ClientConfig {
         }
     }
 
-    /// Sets the agent string
+    /// Replaces the default user agent string. Set to a zero length string to disable
     pub fn set_agent<T: AsRef<str>>(mut self, agent: T) -> Self {
         self.agent = String::from(agent.as_ref());
         self
@@ -66,7 +83,7 @@ impl ClientConfig {
         self.serializers = serializers;
         self
     }
-    /// Returns the list of prefered serializers
+    /// Returns the priority list of serializers
     pub fn get_serializers(&self) -> &Vec<SerializerType> {
         &self.serializers
     }
@@ -80,15 +97,18 @@ impl ClientConfig {
         self
     }
 
+    /// Enables (default) or disables TLS certificate validation
     pub fn set_ssl_verify(mut self, val: bool) -> Self {
         self.ssl_verify = val;
         self
     }
+    /// Returns whether certificate validation is enabled
     pub fn get_ssl_verify(&self) -> bool {
         self.ssl_verify
     }
 }
 
+/// Allows interaction as a client with a WAMP server
 pub struct Client {
     /// Configuration struct used to customize the client
     config: ClientConfig,
@@ -104,14 +124,24 @@ pub struct Client {
     ctl_channel: UnboundedSender<Request>,
 }
 
+/// All the states a client can be in
 pub enum ClientState {
+    /// The event loop hasnt been spawned yet
     NoEventLoop,
+    /// Currently running and connected to a server
     Running,
+    /// Disconnected from a server
     Disconnected(Result<(), WampError>),
 }
 
 impl Client {
-
+    /// Connects to a WAMP server using the specified protocol
+    /// 
+    /// Currently supported protocols are :
+    /// - WebSocket : `ws://some.site.com/wamp` | (Secure) `wss://localhost:8080`
+    /// - RawSocket : `tcp://some.site.com:80` | (Secure) `tcps://localhost:443`
+    /// 
+    /// Extra customization can be specified through the ClientConfig struct
     pub async fn connect<T: AsRef<str>>(uri: T, cfg: Option<ClientConfig>) -> Result<Self, WampError> {
         
         let uri = match Url::parse(uri.as_ref()) {
@@ -143,7 +173,12 @@ impl Client {
         })
     }
     
-    /// Returns a future which will run the event loop. The caller is responsible for running it.
+    /// This function must be called by the client after a succesful connection.
+    /// It returns a future for the event loop which MUST be executed by the caller.
+    /// It also returns the receiving end of a channel (if the client has the 'callee' role) which is reponsible for receiving RPC call futures. The caller
+    /// is also responsible for executing the RPC call futures in whatever way they wish.async_trait
+    /// 
+    /// This allows the caller to use whatever runtime & task execution method they wish
     pub fn event_loop(&mut self) -> Result<
         (
             std::pin::Pin<Box<dyn Future<Output = ()> + Send>>, 
@@ -164,7 +199,7 @@ impl Client {
         Ok((Box::pin(core.event_loop()), rpc_evt_queue))
     }
 
-    /// Sends a join realm request to the core event loop
+    /// Attempts to join a realm and start a session with the server
     pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
 
         // Make sure we are still connected to a server
@@ -211,7 +246,7 @@ impl Client {
         Ok(())
     }
 
-    /// Sends a leave realm request to the core event loop
+    /// Leaves the current realm and terminates the session with the server
     pub async fn leave_realm(&mut self) -> Result<(), WampError> {
 
          // Make sure we are still connected to a server
@@ -239,7 +274,10 @@ impl Client {
         Ok(())
     } 
 
-    /// Subscribes to event for the specifiec topic
+    /// Subscribes to events for the specifiec topic
+    /// 
+    /// This function returns a subscription ID (required to unsubscribe) and
+    /// the receive end of a channel for events published on the topic.
     pub async fn subscribe<T: AsRef<str>>(&self, topic: T) -> Result<(WampId, SubscriptionQueue), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
@@ -259,7 +297,7 @@ impl Client {
         Ok((sub_id, evt_queue))
     }
 
-    /// Unsubscribes to the subscription ID
+    /// Unsubscribes to a previously subscribed topic
     pub async fn unsubscribe(&self, sub_id: WampId) -> Result<(), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
@@ -280,6 +318,9 @@ impl Client {
     }
 
     /// Publishes an event on a specifiec topic
+    /// 
+    /// The caller can set `acknowledge` to true to receive unique IDs from the server
+    /// for each published event.
     pub async fn publish<T: AsRef<str>>(&self, topic: T, arguments: WampArgs, arguments_kw: WampKwArgs, acknowledge: bool) -> Result<WampId, WampError> {
         let mut options = WampDict::new();
 
@@ -298,16 +339,22 @@ impl Client {
             return Err(From::from(format!("Core never received our request : {}", e)));
         }
 
-        // Wait for the result
-        let pub_id = match result.await {
-            Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+        let pub_id = if acknowledge {
+            // Wait for the acknowledgement
+            match result.await {
+                Ok(Ok(r)) => r.unwrap(),
+                Ok(Err(e)) => return Err(From::from(format!("Failed to send publish : {}", e))),
+                Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            }
+        } else {
+            0
         };
-
-        Ok(pub_id.unwrap())
+        Ok(pub_id)
     }
 
-    /// Register an RPC endpoint
+    /// Register an RPC endpoint. Upon succesful registration, a registration ID is returned (used to unregister)
+    /// and calls received from the server will generate a future which will be sent on the rpc event channel
+    /// returned by the call to [event_loop()](struct.Client.html#method.event_loop)
     pub async fn register<T, F, Fut>(&self, uri: T, func_ptr: F) -> Result<WampId, WampError>
     where
         T: AsRef<str>,
@@ -333,7 +380,7 @@ impl Client {
         Ok(rpc_id)
     }
 
-    /// Unregisters the RPC ID
+    /// Unregisters an RPC endpoint
     pub async fn unregister(&self, rpc_id: WampId) -> Result<(), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
@@ -353,6 +400,7 @@ impl Client {
         Ok(())
     }
 
+    /// Calls a registered RPC endpoint on the server
     pub async fn call<T: AsRef<str>>(&self, uri: T, arguments: WampArgs, arguments_kw: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
 
         // Send the request
@@ -376,6 +424,7 @@ impl Client {
         res
     }
 
+    /// Returns the current client status
     pub fn get_status(&mut self) -> &ClientState {
         let new_status = self.core_res.try_recv();
 
@@ -401,6 +450,7 @@ impl Client {
         &self.core_status
     }
 
+    /// Returns whether we are connected to the server or not
     pub fn is_connected(&mut self) -> bool {
         match self.get_status() {
             ClientState::Running => true,
