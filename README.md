@@ -1,6 +1,7 @@
 # wamp_async
 [![crates.io](https://img.shields.io/crates/v/wamp_async.svg)](https://crates.io/crates/wamp_async)
-[![mio](https://docs.rs/wamp_async/badge.svg)](https://docs.rs/wamp_async/)![Lines of Code](https://tokei.rs/b1/gitlab/elast0ny/wamp_async-rs)
+[![mio](https://docs.rs/wamp_async/badge.svg)](https://docs.rs/wamp_async/)
+![Lines of Code](https://tokei.rs/b1/gitlab/elast0ny/wamp_async-rs)
 
 An asynchronous [WAMP](https://wamp-proto.org/) client implementation written in rust.
 
