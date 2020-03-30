@@ -9,9 +9,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )).await?;
     println!("Connected !!");
 
-    // Spawn the event loop
-    tokio::spawn(client.event_loop()?.0);
+    let evt_loop = client.event_loop()?.0;
 
+    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
+
+    // Spawn the event loop
+    tokio::spawn(async move {
+        wait_event_loop_tx.send(()).unwrap();
+        evt_loop.await
+    });
+
+    wait_event_tool_rx.await?;
     println!("Joining realm");
     client.join_realm("realm1").await?;
 
@@ -22,14 +30,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if let Some(_) = std::env::args().find(|a| a == "pub") {
         loop {
             match client.publish("peer.heartbeat", None, None, true).await {
-                Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
+                Ok(pub_id) => println!("\tSent event id {}", pub_id.unwrap()),
                 Err(e) => {
                     println!("publish error {}", e);
                     break;
                 }
             };
             cur_event_num += 1;
-            //Exit before sleeping
+            // Exit before sleeping
             if cur_event_num >= max_events {
                 break;
             }
@@ -43,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         while cur_event_num < max_events {
             match heartbeat_queue.recv().await {
-                Some((pub_id, args, kwargs)) => println!("\tGot {:X} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs),
+                Some((pub_id, args, kwargs)) => println!("\tGot {} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs),
                 None => println!("Subscription is done"),
             };
             cur_event_num += 1;

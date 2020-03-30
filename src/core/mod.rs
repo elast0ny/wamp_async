@@ -191,7 +191,7 @@ impl Core {
         // Make sure we were expecting this message if it has a request ID
         if let Some(ref request) = msg.request_id() {
             if self.pending_requests.remove(request) == false {
-                warn!("Peer sent a response to an unknown request : {:X}", request);
+                warn!("Peer sent a response to an unknown request : {}", request);
                 return Status::Ok;
             }
         }
@@ -273,10 +273,10 @@ impl Core {
 
     /// Generates a new request_id and inserts it into the pending_requests
     fn create_request(&mut self) -> WampId {
-        let mut request: WampId = rand::random();
+        let mut request = WampId::generate();
         // Pick a unique request_id
-        while self.pending_requests.insert(request) == false {
-            request = rand::random();
+        while !self.pending_requests.insert(request) {
+            request = WampId::generate();
         }
         request
     }   

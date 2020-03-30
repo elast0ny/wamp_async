@@ -19,14 +19,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (evt_loop, _) = client.event_loop()?;
 
+    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
+
     // Spawn the event loop
-    tokio::spawn(evt_loop);
-    
+    tokio::spawn(async move {
+        wait_event_loop_tx.send(()).unwrap();
+        evt_loop.await
+    });
+
+    wait_event_tool_rx.await?;
+
     println!("Joining realm");
     client.join_realm("realm1").await?;
 
     // Call an RPC endpoint 5 times
-    let mut num_calls: u8 = 0;
+    let mut num_calls: u64 = 0;
     loop {
         println!("Calling 'peer.echo'");
         match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
@@ -40,7 +47,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if num_calls >= 5 {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
     }
 
     println!("Leaving realm");

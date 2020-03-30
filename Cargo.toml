@@ -29,5 +29,5 @@ tokio-tls = "0.3"
 futures = "0"
 
 [dev-dependencies]
-tokio = { version = "0.2", features = ["macros", "rt-core"] }
+tokio = { version = "0.2", features = ["macros", "rt-core", "time"] }
 lazy_static = "1"

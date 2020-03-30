@@ -201,9 +201,9 @@ impl MsgPrefix {
     }
 
     pub fn payload_len(&self) -> u32 {
-        (self.bytes[3] as u32 + 
+        self.bytes[3] as u32 +
         ((self.bytes[2] as u32) << 8) + 
-        ((self.bytes[1] as u32) << 16))
+        ((self.bytes[1] as u32) << 16)
     }
 }
 

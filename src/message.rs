@@ -7,26 +7,26 @@ use serde::de::{Deserializer, Error, Visitor, SeqAccess};
 use crate::common::*;
 
 // Message IDs
-pub const HELLO_ID: WampId = 1;
-pub const WELCOME_ID: WampId = 2;
-pub const ABORT_ID: WampId = 3;
-pub const GOODBYE_ID: WampId = 6;
-pub const ERROR_ID: WampId = 8;
-pub const PUBLISH_ID: WampId = 16;
-pub const PUBLISHED_ID: WampId = 17;
-pub const SUBSCRIBE_ID: WampId = 32;
-pub const SUBSCRIBED_ID: WampId = 33;
-pub const UNSUBSCRIBE_ID: WampId = 34;
-pub const UNSUBSCRIBED_ID: WampId = 35;
-pub const EVENT_ID: WampId = 36;
-pub const CALL_ID: WampId = 48;
-pub const RESULT_ID: WampId = 50;
-pub const REGISTER_ID: WampId = 64;
-pub const REGISTERED_ID: WampId = 65;
-pub const UNREGISTER_ID: WampId = 66;
-pub const UNREGISTERED_ID: WampId = 67;
-pub const INVOCATION_ID: WampId = 68;
-pub const YIELD_ID: WampId = 70;
+pub const HELLO_ID: WampInteger = 1;
+pub const WELCOME_ID: WampInteger = 2;
+pub const ABORT_ID: WampInteger = 3;
+pub const GOODBYE_ID: WampInteger = 6;
+pub const ERROR_ID: WampInteger = 8;
+pub const PUBLISH_ID: WampInteger = 16;
+pub const PUBLISHED_ID: WampInteger = 17;
+pub const SUBSCRIBE_ID: WampInteger = 32;
+pub const SUBSCRIBED_ID: WampInteger = 33;
+pub const UNSUBSCRIBE_ID: WampInteger = 34;
+pub const UNSUBSCRIBED_ID: WampInteger = 35;
+pub const EVENT_ID: WampInteger = 36;
+pub const CALL_ID: WampInteger = 48;
+pub const RESULT_ID: WampInteger = 50;
+pub const REGISTER_ID: WampInteger = 64;
+pub const REGISTERED_ID: WampInteger = 65;
+pub const UNREGISTER_ID: WampInteger = 66;
+pub const UNREGISTERED_ID: WampInteger = 67;
+pub const INVOCATION_ID: WampInteger = 68;
+pub const YIELD_ID: WampInteger = 70;
 
 /// WAMP message
 #[derive(Debug)]
@@ -427,7 +427,7 @@ impl<'de> Deserialize<'de> for Msg {
             where
                 V: SeqAccess<'de>,
             {
-                let msg_id: WampId = v.next_element()?.ok_or_else(|| Error::invalid_length(0, &self))?;
+                let msg_id: WampInteger = v.next_element()?.ok_or_else(|| Error::invalid_length(0, &self))?;
 
                 match msg_id {
                     HELLO_ID => self.de_hello(v),

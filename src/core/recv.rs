@@ -200,7 +200,7 @@ pub async fn error(core: &mut Core, typ: WampInteger,
 ) -> Status {
 
     let error = WampError::ServerError(error, details);
-    match typ as WampId {
+    match typ {
         SUBSCRIBE_ID => {
             let res = match core.pending_sub.remove(&request) {
                 Some(r) => r,

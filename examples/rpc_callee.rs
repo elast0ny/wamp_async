@@ -1,12 +1,12 @@
 use std::error::Error;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use lazy_static::*;
 
 use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType, ClientState};
 
 lazy_static! {
-    static ref RPC_CALL_COUNT: AtomicU8 = {AtomicU8::new(0)};
+    static ref RPC_CALL_COUNT: AtomicU64 = {AtomicU64::new(0)};
 }
 
 // Simply return the rpc arguments
@@ -33,9 +33,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let (evt_loop, rpc_event_queue) = client.event_loop()?;
 
+    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
+
     // Spawn the event loop
-    tokio::spawn(evt_loop);
-    // Handle RPC events in seperate tasks
+    tokio::spawn(async move {
+        wait_event_loop_tx.send(()).unwrap();
+        evt_loop.await
+    });
+    // Handle RPC events in separate tasks
     tokio::spawn(async move {
         let mut rpc_event_queue = rpc_event_queue.unwrap();
         loop {
@@ -45,11 +50,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 None => break,
             };
 
-            //Run it in its own task
+            // Run it in its own task
             tokio::spawn(rpc_event);
         }
     });
 
+    wait_event_tool_rx.await?;
     println!("Joining realm");
     client.join_realm("realm1").await?;
 
@@ -62,7 +68,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if call_num >= 5 || !client.is_connected() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
     }
 
     // Client should not have disconnected

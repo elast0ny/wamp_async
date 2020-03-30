@@ -241,7 +241,7 @@ impl Client {
 
         // Set the current session
         self.session_id = Some(session_id);
-        debug!("Connected with session_id {:?} !", session_id);
+        debug!("Connected with session_id {} !", session_id);
 
         Ok(())
     }
@@ -317,11 +317,11 @@ impl Client {
         Ok(())
     }
 
-    /// Publishes an event on a specifiec topic
+    /// Publishes an event on a specific topic
     /// 
     /// The caller can set `acknowledge` to true to receive unique IDs from the server
     /// for each published event.
-    pub async fn publish<T: AsRef<str>>(&self, topic: T, arguments: WampArgs, arguments_kw: WampKwArgs, acknowledge: bool) -> Result<WampId, WampError> {
+    pub async fn publish<T: AsRef<str>>(&self, topic: T, arguments: WampArgs, arguments_kw: WampKwArgs, acknowledge: bool) -> Result<Option<WampId>, WampError> {
         let mut options = WampDict::new();
 
         if acknowledge {
@@ -341,13 +341,13 @@ impl Client {
 
         let pub_id = if acknowledge {
             // Wait for the acknowledgement
-            match result.await {
+            Some(match result.await {
                 Ok(Ok(r)) => r.unwrap(),
                 Ok(Err(e)) => return Err(From::from(format!("Failed to send publish : {}", e))),
                 Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
-            }
+            })
         } else {
-            0
+            None
         };
         Ok(pub_id)
     }

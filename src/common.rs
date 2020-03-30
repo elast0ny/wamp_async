@@ -1,7 +1,9 @@
 use std::collections::HashMap;
-use std::hash::Hash;
-use std::pin::Pin;
+use std::fmt;
 use std::future::Future;
+use std::hash::Hash;
+use std::num::NonZeroU64;
+use std::pin::Pin;
 
 use crate::error::*;
 
@@ -12,8 +14,34 @@ pub(crate) const DEFAULT_AGENT_STR: &str = concat!(env!("CARGO_PKG_NAME"), "_rs-
 
 /// uri: a string URI as defined in URIs
 pub type WampUri = String;
+
 /// id: an integer ID as defined in IDs
-pub type WampId = u64;
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WampId(NonZeroU64);
+
+impl fmt::Display for WampId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<WampId> for NonZeroU64 {
+    fn from(id: WampId) -> Self {
+        id.0
+    }
+}
+
+impl WampId {
+    /// IDs in the global scope MUST be drawn randomly from a uniform distribution over the complete
+    /// range [1, 2^53]
+    pub(crate) fn generate() -> Self {
+        let random_id = rand::random::<u64>() & ((1 << 53) - 1);
+        // Safety: since random_id is in range of [0, 2**53) and we add 1, the value is always in
+        // range [1, 2^53].
+        Self(unsafe { NonZeroU64::new_unchecked(random_id + 1) })
+    }
+}
+
 /// integer: a non-negative integer
 pub type WampInteger = usize;
 /// string: a Unicode string, including the empty string
