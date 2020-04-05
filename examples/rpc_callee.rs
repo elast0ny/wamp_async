@@ -3,10 +3,12 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use lazy_static::*;
 
-use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType, ClientState};
+use wamp_async::{
+    Client, ClientConfig, ClientState, SerializerType, WampArgs, WampError, WampKwArgs,
+};
 
 lazy_static! {
-    static ref RPC_CALL_COUNT: AtomicU64 = {AtomicU64::new(0)};
+    static ref RPC_CALL_COUNT: AtomicU64 = { AtomicU64::new(0) };
 }
 
 // Simply return the rpc arguments
@@ -26,9 +28,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Allow invalid/self signed certs
                 .set_ssl_verify(false)
                 // Use MsgPack first or fallback to Json
-                .set_serializers(vec![SerializerType::MsgPack, SerializerType::Json])
-        )
-    ).await?;
+                .set_serializers(vec![SerializerType::MsgPack, SerializerType::Json]),
+        ),
+    )
+    .await?;
     println!("Connected !!");
 
     let (evt_loop, rpc_event_queue) = client.event_loop()?;
@@ -83,7 +86,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.leave_realm().await?;
 
     client.disconnect().await;
-
 
     Ok(())
 }

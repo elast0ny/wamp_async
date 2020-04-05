@@ -4,9 +4,11 @@ use wamp_async::{Client, ClientConfig};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect("tcps://localhost:8081", Some(
-        ClientConfig::new().set_ssl_verify(false)
-    )).await?;
+    let mut client = Client::connect(
+        "tcps://localhost:8081",
+        Some(ClientConfig::new().set_ssl_verify(false)),
+    )
+    .await?;
     println!("Connected !!");
 
     let evt_loop = client.event_loop()?.0;
@@ -42,16 +44,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 break;
             }
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await
-        }  
+        }
     // Start as a subscriber
     } else {
-        println!("Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument");
+        println!(
+            "Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument"
+        );
         let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat").await?;
         println!("Waiting for {} heartbeats...", max_events);
 
         while cur_event_num < max_events {
             match heartbeat_queue.recv().await {
-                Some((pub_id, args, kwargs)) => println!("\tGot {} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs),
+                Some((pub_id, args, kwargs)) => {
+                    println!("\tGot {} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs)
+                }
                 None => println!("Subscription is done"),
             };
             cur_event_num += 1;
@@ -59,7 +65,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         client.unsubscribe(sub_id).await?;
     }
-    
+
     println!("Leaving realm");
     client.leave_realm().await?;
 

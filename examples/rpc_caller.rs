@@ -1,5 +1,5 @@
 use std::error::Error;
-use wamp_async::{Client, ClientConfig, ClientRole, Arg, SerializerType};
+use wamp_async::{Arg, Client, ClientConfig, ClientRole, SerializerType};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -12,9 +12,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 // Restrict our roles
                 .set_roles(vec![ClientRole::Caller])
                 // Only use Json serialization
-                .set_serializers(vec![SerializerType::Json])
-        )
-    ).await?;
+                .set_serializers(vec![SerializerType::Json]),
+        ),
+    )
+    .await?;
     println!("Connected !!");
 
     let (evt_loop, _) = client.event_loop()?;
@@ -36,7 +37,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut num_calls: u64 = 0;
     loop {
         println!("Calling 'peer.echo'");
-        match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
+        match client
+            .call("peer.echo", Some(vec![Arg::Integer(12)]), None)
+            .await
+        {
             Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
             Err(e) => {
                 println!("Error calling ({:?})", e);

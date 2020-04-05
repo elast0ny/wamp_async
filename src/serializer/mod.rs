@@ -32,7 +32,7 @@ impl SerializerType {
         if s == SerializerType::Json.to_str() {
             SerializerType::Json
         } else if s == SerializerType::MsgPack.to_str() {
-            SerializerType::MsgPack 
+            SerializerType::MsgPack
         } else {
             SerializerType::Invalid
         }
@@ -52,7 +52,6 @@ quick_error! {
         }
     }
 }
-
 
 pub trait SerializerImpl {
     fn pack(&self, value: &Msg) -> Result<Vec<u8>, SerializerError>;

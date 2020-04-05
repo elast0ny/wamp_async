@@ -2,8 +2,8 @@ use quick_error::*;
 use url::ParseError;
 
 use crate::common::*;
-use crate::transport::TransportError;
 use crate::serializer::SerializerError;
+use crate::transport::TransportError;
 
 quick_error! {
     /// Types of errors a WAMP client can encounter

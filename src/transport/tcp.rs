@@ -1,14 +1,14 @@
 use log::*;
 
 use async_trait::async_trait;
-use tokio::net::TcpStream;
 use native_tls::TlsConnector;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::TcpStream;
 use tokio_tls;
-use tokio::io::{AsyncWriteExt, AsyncReadExt};
 
-use crate::ClientConfig;
-use crate::transport::{Transport, TransportError};
 use crate::serializer::SerializerType;
+use crate::transport::{Transport, TransportError};
+use crate::ClientConfig;
 
 pub const MAX_MSG_SZ: u32 = 1 << 24;
 pub const MIN_MSG_SZ: u32 = 1 << 9;
@@ -53,14 +53,20 @@ impl AsRef<[u8]> for HandshakeCtx {
 }
 impl std::fmt::Debug for HandshakeCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{:02X}{:02X}{:02X}{:02X} (MsgSize : 0x{:X}, Serializer : {:?})",
-            self.client[0], self.client[1], self.client[2], self.client[3],
+        write!(
+            f,
+            "0x{:02X}{:02X}{:02X}{:02X} (MsgSize : 0x{:X}, Serializer : {:?})",
+            self.client[0],
+            self.client[1],
+            self.client[2],
+            self.client[3],
             1 << ((self.client[1] >> 4) + 9),
             match self.client[1] & 0x0F {
                 x if x == SerializerType::Json as u8 => SerializerType::Json,
                 x if x == SerializerType::MsgPack as u8 => SerializerType::MsgPack,
                 _ => SerializerType::Invalid,
-            })
+            }
+        )
     }
 }
 impl HandshakeCtx {
@@ -69,13 +75,14 @@ impl HandshakeCtx {
             0x7F, // Magic value
             0xF0 & // Max msg length
             ((SerializerType::MsgPack as u8) & 0x0F), // Serialized
-            0, 0 // Reserved
+            0,
+            0, // Reserved
         ];
         HandshakeCtx {
             msg_size: 0,
             serializer: SerializerType::Json,
             client,
-            server: [0,0,0,0],
+            server: [0, 0, 0, 0],
         }
     }
 
@@ -90,16 +97,17 @@ impl HandshakeCtx {
                 } else {
                     p
                 }
-            },
-            None => {
-                MAX_MSG_SZ
-            },
+            }
+            None => MAX_MSG_SZ,
         };
 
         if msg_size != req_size {
-            warn!("Adjusted max TCP message size from {} to {}", msg_size, req_size);
+            warn!(
+                "Adjusted max TCP message size from {} to {}",
+                msg_size, req_size
+            );
         }
-        
+
         self.msg_size = req_size;
         self.client[1] = (self.client[1] & 0x0F) | (0xF0);
     }
@@ -114,7 +122,7 @@ impl HandshakeCtx {
     }
 
     pub fn validate(&self) -> Result<(), TransportError> {
-        if self.server[0] != 0x7f || self.server[2] != 0 || self.server[3] != 0{
+        if self.server[0] != 0x7f || self.server[2] != 0 || self.server[3] != 0 {
             return Err(TransportError::UnexpectedResponse);
         }
 
@@ -125,14 +133,12 @@ impl HandshakeCtx {
             }
 
             let server_error: u8 = (self.server[1] & 0xF0) >> 4 as u8;
-            return Err(
-                match server_error {
-                    1 => TransportError::SerializerNotSupported(self.serializer),
-                    2 => TransportError::InvalidMaximumMsgSize(self.msg_size),
-                    4 => TransportError::MaximumServerConn,
-                    _ => TransportError::UnexpectedResponse,
-                }
-            );
+            return Err(match server_error {
+                1 => TransportError::SerializerNotSupported(self.serializer),
+                2 => TransportError::InvalidMaximumMsgSize(self.msg_size),
+                4 => TransportError::MaximumServerConn,
+                _ => TransportError::UnexpectedResponse,
+            });
         }
 
         Ok(())
@@ -144,42 +150,33 @@ struct MsgPrefix {
 }
 impl std::fmt::Debug for MsgPrefix {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Type : {}, PayloadLen : {}",
+        write!(
+            f,
+            "Type : {}, PayloadLen : {}",
             self.payload_type(),
-            self.payload_len())
+            self.payload_len()
+        )
     }
 }
 impl MsgPrefix {
     pub fn new_from(msg_type: &TcpMsg, msg_len: Option<u32>) -> Self {
-        let bytes: [u8; 4] = [
-            0x7 & msg_type.to_id(),
-            0,
-            0,
-            0,
-        ];
+        let bytes: [u8; 4] = [0x7 & msg_type.to_id(), 0, 0, 0];
 
-        let mut h = MsgPrefix {
-            bytes
-        };
+        let mut h = MsgPrefix { bytes };
 
         if let Some(len) = msg_len {
-            h.set_msg_len(len);   
+            h.set_msg_len(len);
         }
         h
     }
 
     pub fn new() -> Self {
-        let bytes: [u8; 4] = [
-            0,
-            0,
-            0,
-            0,
-        ];
+        let bytes: [u8; 4] = [0, 0, 0, 0];
 
         MsgPrefix { bytes }
     }
 
-    pub fn set_msg_len(&mut self, len :u32) {
+    pub fn set_msg_len(&mut self, len: u32) {
         let len_bytes = len.to_be_bytes();
         self.bytes[1] = len_bytes[1];
         self.bytes[2] = len_bytes[2];
@@ -191,7 +188,6 @@ impl MsgPrefix {
     }
 
     pub fn msg_type(&self) -> Option<TcpMsg> {
-
         // First 5 bits must be 0
         if self.bytes[0] & 0xF8 != 0 {
             return None;
@@ -201,9 +197,7 @@ impl MsgPrefix {
     }
 
     pub fn payload_len(&self) -> u32 {
-        self.bytes[3] as u32 +
-        ((self.bytes[2] as u32) << 8) + 
-        ((self.bytes[1] as u32) << 16)
+        self.bytes[3] as u32 + ((self.bytes[2] as u32) << 8) + ((self.bytes[1] as u32) << 16)
     }
 }
 
@@ -218,7 +212,9 @@ impl SockWrapper {
             SockWrapper::Tls(s) => s.get_mut(),
         };
 
-        match sock.shutdown() {_=>{},};
+        match sock.shutdown() {
+            _ => {}
+        };
     }
 }
 
@@ -233,11 +229,11 @@ impl SockWrapper {
             debug!("Failed to send on RawSocket : {:?}", e);
             return Err(TransportError::SendFailed);
         }
-        
+
         Ok(())
     }
 
-    pub async fn read_exact(&mut self, out_bytes: &mut[u8]) -> Result<(), TransportError> {
+    pub async fn read_exact(&mut self, out_bytes: &mut [u8]) -> Result<(), TransportError> {
         let res = match self {
             SockWrapper::Plain(ref mut s) => s.read_exact(out_bytes).await,
             SockWrapper::Tls(s) => s.read_exact(out_bytes).await,
@@ -265,35 +261,45 @@ impl Transport for TcpTransport {
     async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
         let payload: &[u8] = data.as_ref();
         let header: MsgPrefix = MsgPrefix::new_from(&TcpMsg::Regular, Some(payload.len() as u32));
-        
-        trace!("Send[0x{:X}] : {:?} ({:?})", std::mem::size_of_val(&header), header.bytes, header);
+
+        trace!(
+            "Send[0x{:X}] : {:?} ({:?})",
+            std::mem::size_of_val(&header),
+            header.bytes,
+            header
+        );
         self.sock.write_all(&header.bytes).await?;
-    
+
         trace!("Send[0x{:X}] : {:?}", payload.len(), payload);
         self.sock.write_all(payload).await?;
 
         Ok(())
     }
-    
+
     async fn recv(&mut self) -> Result<Vec<u8>, TransportError> {
         let mut payload: Vec<u8>;
         let mut header: MsgPrefix = MsgPrefix::new();
-    
+
         loop {
             self.sock.read_exact(&mut header.bytes).await?;
-            trace!("Recv[0x{:X}] : {:?} - ({:?})", std::mem::size_of_val(&header), header, header);
-        
+            trace!(
+                "Recv[0x{:X}] : {:?} - ({:?})",
+                std::mem::size_of_val(&header),
+                header,
+                header
+            );
+
             // Validate the 4 byte header
             let msg_type = match header.msg_type() {
                 Some(m) => m,
                 None => {
                     error!("RawSocket message had an invalid header");
                     return Err(TransportError::ReceiveFailed);
-                },
+                }
             };
-            
+
             payload = Vec::with_capacity(header.payload_len() as usize);
-            unsafe {payload.set_len(header.payload_len() as usize)};
+            unsafe { payload.set_len(header.payload_len() as usize) };
             self.sock.read_exact(&mut payload).await?;
             trace!("Recv[0x{:X}] : {:?}", payload.len(), payload);
 
@@ -302,7 +308,7 @@ impl Transport for TcpTransport {
                 _ => continue, //TODO : Handle ping/pong
             }
         }
-    
+
         Ok(payload)
     }
 
@@ -311,8 +317,12 @@ impl Transport for TcpTransport {
     }
 }
 
-pub async fn connect(host_ip: &str, host_port: u16, is_tls: bool, config: &ClientConfig) -> Result<(Box<dyn Transport + Send>, SerializerType), TransportError> {
-    
+pub async fn connect(
+    host_ip: &str,
+    host_port: u16,
+    is_tls: bool,
+    config: &ClientConfig,
+) -> Result<(Box<dyn Transport + Send>, SerializerType), TransportError> {
     let host_addr = format!("{}:{}", host_ip, host_port);
     let mut handshake = HandshakeCtx::new();
     let mut msg_size: u32 = MAX_MSG_SZ;
@@ -330,7 +340,7 @@ pub async fn connect(host_ip: &str, host_port: u16, is_tls: bool, config: &Clien
         };
         handshake.set_serializer(*serializer);
         trace!("\tSending handshake : {:?}", handshake);
-        
+
         // Preform the WAMP handshake
         if let Err(e) = stream.write_all(handshake.as_ref()).await {
             error!("Failed to send on RawSocket handshake : {:?}", e);
@@ -347,20 +357,16 @@ pub async fn connect(host_ip: &str, host_port: u16, is_tls: bool, config: &Clien
                     warn!("{:?}", e);
                     stream.close();
                     continue;
-                },
+                }
                 TransportError::InvalidMaximumMsgSize(_) => {
                     error!("{:?}", e);
                     break;
-                },
+                }
                 _ => break,
             };
         }
 
-        return Ok((Box::new(
-            TcpTransport {
-                sock: stream,
-            }
-        ), *serializer));
+        return Ok((Box::new(TcpTransport { sock: stream }), *serializer));
     }
 
     return Err(TransportError::ConnectionFailed);
@@ -374,15 +380,18 @@ pub async fn connect_raw(host_ip: &str, host_port: u16) -> Result<TcpStream, Tra
         Err(e) => {
             error!("Failed to connect to server using raw tcp: {:?}", e);
             return Err(TransportError::ConnectionFailed);
-        },
+        }
     }
 }
 
-
-pub async fn connect_tls(host_url: &str, host_port: u16, cfg: &ClientConfig) -> Result<tokio_tls::TlsStream<TcpStream>, TransportError> {
+pub async fn connect_tls(
+    host_url: &str,
+    host_port: u16,
+    cfg: &ClientConfig,
+) -> Result<tokio_tls::TlsStream<TcpStream>, TransportError> {
     let stream = connect_raw(host_url, host_port).await?;
     let mut tls_cfg = TlsConnector::builder();
-    
+
     if !cfg.get_ssl_verify() {
         tls_cfg.danger_accept_invalid_certs(true);
     }
@@ -392,7 +401,7 @@ pub async fn connect_tls(host_url: &str, host_port: u16, cfg: &ClientConfig) -> 
         Err(e) => {
             error!("Failed to create TLS context : {:?}", e);
             return Err(TransportError::ConnectionFailed);
-        },
+        }
     };
     let cx = tokio_tls::TlsConnector::from(cx);
     match cx.connect(host_url, stream).await {

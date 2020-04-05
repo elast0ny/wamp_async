@@ -1,14 +1,14 @@
-use std::collections::{HashSet, HashMap};
+use std::collections::{HashMap, HashSet};
 
-use tokio::select;
-use tokio::sync::oneshot::{Sender};
-use tokio::sync::{mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender};
 use log::*;
+use tokio::select;
+use tokio::sync::oneshot::Sender;
+use tokio::sync::{mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender};
 
-use crate::error::*;
 use crate::common::*;
-use crate::transport::*;
+use crate::error::*;
 use crate::serializer::*;
+use crate::transport::*;
 
 mod recv;
 mod send;
@@ -23,26 +23,44 @@ pub enum Status {
     Ok,
 }
 
-pub type JoinResult = Sender<Result<(
-    WampId, // Session ID
-    HashMap<WampString, Arg> // Server roles
-), WampError>>;
+pub type JoinResult = Sender<
+    Result<
+        (
+            WampId,                   // Session ID
+            HashMap<WampString, Arg>, // Server roles
+        ),
+        WampError,
+    >,
+>;
 pub type SubscriptionQueue = UnboundedReceiver<(
-    WampId, // Publish event ID
+    WampId,   // Publish event ID
     WampArgs, // Publish args
-    WampKwArgs
+    WampKwArgs,
 )>; // publish kwargs
-pub type PendingSubResult = Sender<Result<(
-    WampId, //Subcription ID
-    SubscriptionQueue // Queue for incoming events
-), WampError>>;
-pub type PendingRegisterResult = Sender<Result<
-    WampId, // Registration ID
-    WampError>>;
-pub type PendingCallResult = Sender<Result<(
-    WampArgs, // Return args
-    WampKwArgs // Return kwargs
-), WampError>>;
+pub type PendingSubResult = Sender<
+    Result<
+        (
+            WampId,            //Subcription ID
+            SubscriptionQueue, // Queue for incoming events
+        ),
+        WampError,
+    >,
+>;
+pub type PendingRegisterResult = Sender<
+    Result<
+        WampId, // Registration ID
+        WampError,
+    >,
+>;
+pub type PendingCallResult = Sender<
+    Result<
+        (
+            WampArgs,   // Return args
+            WampKwArgs, // Return kwargs
+        ),
+        WampError,
+    >,
+>;
 
 pub struct Core {
     /// Generic transport
@@ -78,25 +96,33 @@ pub struct Core {
 }
 
 impl Core {
-
     /// Establishes a connection with a WAMP server
-    pub async fn connect(uri: &url::Url, cfg: &client::ClientConfig, ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>), core_res: UnboundedSender<Result<(), WampError>>) -> Result<Self, WampError> {        
+    pub async fn connect(
+        uri: &url::Url,
+        cfg: &client::ClientConfig,
+        ctl_channel: (UnboundedSender<Request>, UnboundedReceiver<Request>),
+        core_res: UnboundedSender<Result<(), WampError>>,
+    ) -> Result<Self, WampError> {
         // Connect to the router using the requested transport
         let (sock, serializer_type) = match uri.scheme() {
-            "ws" | "wss" => {
-                ws::connect(uri, &cfg).await?
-            },
+            "ws" | "wss" => ws::connect(uri, &cfg).await?,
             "tcp" | "tcps" => {
                 let host_port = match uri.port() {
                     Some(p) => p,
                     None => {
                         return Err(From::from(format!("No port specified for tcp host")));
-                    },
+                    }
                 };
 
                 // Perform the TCP connection
-                tcp::connect(uri.host_str().unwrap(), host_port, !(uri.scheme() == "tcp"), &cfg).await?
-            },
+                tcp::connect(
+                    uri.host_str().unwrap(),
+                    host_port,
+                    !(uri.scheme() == "tcp"),
+                    &cfg,
+                )
+                .await?
+            }
             s => return Err(From::from(format!("Unknown uri scheme : {}", s))),
         };
 
@@ -111,33 +137,31 @@ impl Core {
         //let (rpc_result_w, rpc_result_r) = mpsc::unbounded_channel();
         let (rpc_event_queue_w, rpc_event_queue_r) = mpsc::unbounded_channel();
 
-        Ok(
-            Core {
-                sock,
-                core_res,
-                valid_session: false,
-                serializer,
-                ctl_sender: ctl_channel.0,
-                ctl_channel: Some(ctl_channel.1),
-                pending_requests: HashSet::new(),
-                pending_transactions: HashMap::new(),
+        Ok(Core {
+            sock,
+            core_res,
+            valid_session: false,
+            serializer,
+            ctl_sender: ctl_channel.0,
+            ctl_channel: Some(ctl_channel.1),
+            pending_requests: HashSet::new(),
+            pending_transactions: HashMap::new(),
 
-                pending_sub: HashMap::new(),
-                subscriptions: HashMap::new(),
+            pending_sub: HashMap::new(),
+            subscriptions: HashMap::new(),
 
-                pending_register: HashMap::new(),
-                rpc_endpoints: HashMap::new(),
-                rpc_event_queue_r: Some(rpc_event_queue_r),
-                rpc_event_queue_w,
-                pending_call: HashMap::new(),
-            }
-        )
+            pending_register: HashMap::new(),
+            rpc_endpoints: HashMap::new(),
+            rpc_event_queue_r: Some(rpc_event_queue_r),
+            rpc_event_queue_w,
+            pending_call: HashMap::new(),
+        })
     }
 
     /// Event loop that handles outbound/inboud events
     pub async fn event_loop(mut self) {
         let mut ctl_channel = self.ctl_channel.take().unwrap();
-        
+
         // Notify the client that we are now running the event loop
         let _ = self.core_res.send(Ok(()));
         loop {
@@ -154,7 +178,7 @@ impl Core {
                                 error!("Failed to recv : {:?}", e);
                                 let _ = self.core_res.send(Err(e));
                             }
-                            
+
                             break;
                         },
                         Ok(m) => self.handle_peer_msg(m).await,
@@ -175,19 +199,17 @@ impl Core {
                 Status::Shutdown => {
                     let _ = self.core_res.send(Ok(()));
                     break;
-                },
-                Status::Ok => {},
+                }
+                Status::Ok => {}
             }
         }
         debug!("Event loop shutting down !");
-        
+
         self.shutdown().await;
-        
     }
 
     /// Handles unsolicited messages from the peer (events, rpc calls, etc...)
     async fn handle_peer_msg(&mut self, msg: Msg) -> Status {
-
         // Make sure we were expecting this message if it has a request ID
         if let Some(ref request) = msg.request_id() {
             if self.pending_requests.remove(request) == false {
@@ -196,17 +218,70 @@ impl Core {
             }
         }
         match msg {
-            Msg::Subscribed{request, subscription} => recv::subscribed(self, request, subscription).await,
-            Msg::Unsubscribed{request} => recv::unsubscribed(self, request).await,
-            Msg::Published{request, publication} => recv::published(self, request, publication).await,
-            Msg::Event{subscription, publication, details, arguments, arguments_kw} => recv::event(self, subscription, publication, details, arguments, arguments_kw).await,
-            Msg::Registered{request, registration} => recv::registered(self, request, registration).await,
-            Msg::Unregistered{request} => recv::unregisterd(self, request).await,
-            Msg::Invocation{request, registration, details, arguments, arguments_kw} => recv::invocation(self, request, registration, details, arguments, arguments_kw).await,
-            Msg::Result{request, details, arguments, arguments_kw} => recv::call_result(self, request, details, arguments, arguments_kw).await,
-            Msg::Goodbye{details, reason} => recv::goodbye(self, details, reason).await,
-            Msg::Abort{details, reason} => recv::abort(self, details, reason).await,
-            Msg::Error{typ, request, details, error, arguments, arguments_kw} => recv::error(self, typ, request, details, error, arguments, arguments_kw).await,
+            Msg::Subscribed {
+                request,
+                subscription,
+            } => recv::subscribed(self, request, subscription).await,
+            Msg::Unsubscribed { request } => recv::unsubscribed(self, request).await,
+            Msg::Published {
+                request,
+                publication,
+            } => recv::published(self, request, publication).await,
+            Msg::Event {
+                subscription,
+                publication,
+                details,
+                arguments,
+                arguments_kw,
+            } => {
+                recv::event(
+                    self,
+                    subscription,
+                    publication,
+                    details,
+                    arguments,
+                    arguments_kw,
+                )
+                .await
+            }
+            Msg::Registered {
+                request,
+                registration,
+            } => recv::registered(self, request, registration).await,
+            Msg::Unregistered { request } => recv::unregisterd(self, request).await,
+            Msg::Invocation {
+                request,
+                registration,
+                details,
+                arguments,
+                arguments_kw,
+            } => {
+                recv::invocation(
+                    self,
+                    request,
+                    registration,
+                    details,
+                    arguments,
+                    arguments_kw,
+                )
+                .await
+            }
+            Msg::Result {
+                request,
+                details,
+                arguments,
+                arguments_kw,
+            } => recv::call_result(self, request, details, arguments, arguments_kw).await,
+            Msg::Goodbye { details, reason } => recv::goodbye(self, details, reason).await,
+            Msg::Abort { details, reason } => recv::abort(self, details, reason).await,
+            Msg::Error {
+                typ,
+                request,
+                details,
+                error,
+                arguments,
+                arguments_kw,
+            } => recv::error(self, typ, request, details, error, arguments, arguments_kw).await,
             _ => {
                 warn!("Recevied unhandled message {:?}", msg);
                 Status::Ok
@@ -219,21 +294,41 @@ impl Core {
         // Forward the request the the implementor
         match req {
             Request::Shutdown => Status::Shutdown,
-            Request::Join{uri, roles, agent_str, res} => send::join_realm(self, uri, roles, agent_str, res).await,
-            Request::Leave{res} => send::leave_realm(self, res).await,
-            Request::Subscribe{uri, res} => send::subscribe(self, uri, res).await,
-            Request::Unsubscribe {sub_id, res} => send::unsubscribe(self, sub_id, res).await,
-            Request::Publish{uri, options, arguments, arguments_kw, res} => send::publish(self, uri, options, arguments, arguments_kw, res).await,
-            Request::Register{uri, res, func_ptr} => send::register(self, uri, res, func_ptr).await,
-            Request::Unregister{rpc_id, res} => send::unregister(self, rpc_id, res).await,
-            Request::InvocationResult{request, res} => send::invoke_yield(self, request, res).await,
-            Request::Call{uri, options, arguments, arguments_kw, res} => send::call(self, uri, options, arguments, arguments_kw, res).await,
+            Request::Join {
+                uri,
+                roles,
+                agent_str,
+                res,
+            } => send::join_realm(self, uri, roles, agent_str, res).await,
+            Request::Leave { res } => send::leave_realm(self, res).await,
+            Request::Subscribe { uri, res } => send::subscribe(self, uri, res).await,
+            Request::Unsubscribe { sub_id, res } => send::unsubscribe(self, sub_id, res).await,
+            Request::Publish {
+                uri,
+                options,
+                arguments,
+                arguments_kw,
+                res,
+            } => send::publish(self, uri, options, arguments, arguments_kw, res).await,
+            Request::Register { uri, res, func_ptr } => {
+                send::register(self, uri, res, func_ptr).await
+            }
+            Request::Unregister { rpc_id, res } => send::unregister(self, rpc_id, res).await,
+            Request::InvocationResult { request, res } => {
+                send::invoke_yield(self, request, res).await
+            }
+            Request::Call {
+                uri,
+                options,
+                arguments,
+                arguments_kw,
+                res,
+            } => send::call(self, uri, options, arguments, arguments_kw, res).await,
         }
     }
 
     /// Serializes a message and sends it on the transport
     pub async fn send(&mut self, msg: &Msg) -> Result<(), WampError> {
-
         // Serialize the data
         let payload = self.serializer.pack(msg)?;
 
@@ -244,13 +339,12 @@ impl Core {
 
         // Send to host
         self.sock.send(&payload).await?;
-        
+
         Ok(())
     }
 
     /// Receives a message and deserializes it
     pub async fn recv(&mut self) -> Result<Msg, WampError> {
-
         // Receive a full message from the host
         let payload = self.sock.recv().await?;
 
@@ -279,5 +373,5 @@ impl Core {
             request = WampId::generate();
         }
         request
-    }   
+    }
 }

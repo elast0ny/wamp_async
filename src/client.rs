@@ -1,15 +1,17 @@
-use std::future::Future;
 use std::collections::HashSet;
+use std::future::Future;
 
 use log::*;
+use tokio::sync::oneshot;
+use tokio::sync::{
+    mpsc, mpsc::error::TryRecvError, mpsc::UnboundedReceiver, mpsc::UnboundedSender,
+};
 use url::*;
-use tokio::sync::{mpsc, mpsc::UnboundedSender, mpsc::UnboundedReceiver, mpsc::error::TryRecvError};
-use tokio::sync::{oneshot};
 
-use crate::error::*;
-use crate::serializer::SerializerType;
 pub use crate::common::*;
 use crate::core::*;
+use crate::error::*;
+use crate::serializer::SerializerType;
 
 /// Options one can set when connecting to a WAMP server
 pub struct ClientConfig {
@@ -22,18 +24,18 @@ pub struct ClientConfig {
     /// Sets the maximum message to be sent over the transport
     max_msg_size: u32,
     /// When using a secure transport, this option disables certificate validation
-    ssl_verify: bool
+    ssl_verify: bool,
 }
 
 impl ClientConfig {
     /// Creates a client config with reasonnable defaults
-    /// 
+    ///
     /// Roles :
     /// - [ClientRole::Caller](enum.ClientRole.html#variant.Caller)
     /// - [ClientRole::Callee](enum.ClientRole.html#variant.Callee)
     /// - [ClientRole::Publisher](enum.ClientRole.html#variant.Publisher)
     /// - [ClientRole::Subscriber](enum.ClientRole.html#variant.Subscriber)
-    /// 
+    ///
     /// Serializers :
     /// 1. [SerializerType::Json](enum.SerializerType.html#variant.Json)
     /// 2. [SerializerType::MsgPack](enum.SerializerType.html#variant.MsgPack)
@@ -45,8 +47,11 @@ impl ClientConfig {
                 ClientRole::Caller,
                 ClientRole::Callee,
                 ClientRole::Publisher,
-                ClientRole::Subscriber
-            ].iter().cloned().collect(),
+                ClientRole::Subscriber,
+            ]
+            .iter()
+            .cloned()
+            .collect(),
             serializers: vec![SerializerType::Json, SerializerType::MsgPack],
             max_msg_size: 0,
             ssl_verify: true,
@@ -136,19 +141,21 @@ pub enum ClientState {
 
 impl Client {
     /// Connects to a WAMP server using the specified protocol
-    /// 
+    ///
     /// Currently supported protocols are :
     /// - WebSocket : `ws://some.site.com/wamp` | (Secure) `wss://localhost:8080`
     /// - RawSocket : `tcp://some.site.com:80` | (Secure) `tcps://localhost:443`
-    /// 
+    ///
     /// Extra customization can be specified through the ClientConfig struct
-    pub async fn connect<T: AsRef<str>>(uri: T, cfg: Option<ClientConfig>) -> Result<Self, WampError> {
-        
+    pub async fn connect<T: AsRef<str>>(
+        uri: T,
+        cfg: Option<ClientConfig>,
+    ) -> Result<Self, WampError> {
         let uri = match Url::parse(uri.as_ref()) {
             Ok(u) => u,
             Err(e) => return Err(WampError::InvalidUri(e)),
         };
-        
+
         let config = match cfg {
             Some(c) => c,
             // Set defaults
@@ -172,19 +179,22 @@ impl Client {
             core_status: ClientState::NoEventLoop,
         })
     }
-    
+
     /// This function must be called by the client after a succesful connection.
     /// It returns a future for the event loop which MUST be executed by the caller.
     /// It also returns the receiving end of a channel (if the client has the 'callee' role) which is reponsible for receiving RPC call futures. The caller
     /// is also responsible for executing the RPC call futures in whatever way they wish.async_trait
-    /// 
+    ///
     /// This allows the caller to use whatever runtime & task execution method they wish
-    pub fn event_loop(&mut self) -> Result<
+    pub fn event_loop(
+        &mut self,
+    ) -> Result<
         (
-            std::pin::Pin<Box<dyn Future<Output = ()> + Send>>, 
-            Option<UnboundedReceiver<GenericFuture>>
-        ), WampError> {
-        
+            std::pin::Pin<Box<dyn Future<Output = ()> + Send>>,
+            Option<UnboundedReceiver<GenericFuture>>,
+        ),
+        WampError,
+    > {
         let mut core = match self.conn.take() {
             Some(c) => c,
             None => return Err(From::from("Event loop already running".to_string())),
@@ -201,15 +211,19 @@ impl Client {
 
     /// Attempts to join a realm and start a session with the server
     pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
-
         // Make sure we are still connected to a server
         if !self.is_connected() {
-            return Err(From::from("The client is currently not connected".to_string()));
+            return Err(From::from(
+                "The client is currently not connected".to_string(),
+            ));
         }
 
         // Make sure we arent already part of a realm
         if self.session_id.is_some() {
-            return Err(From::from(format!("join_realm('{}') : Client already joined to a realm", realm.as_ref())));
+            return Err(From::from(format!(
+                "join_realm('{}') : Client already joined to a realm",
+                realm.as_ref()
+            )));
         }
 
         // Send a request for the core to perform the action
@@ -224,18 +238,26 @@ impl Client {
             },
             res: res_sender,
         }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the request results
         let (session_id, mut server_roles) = match res.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         // Add the server roles
         self.server_roles.drain();
-        for (role,_) in server_roles.drain().take(1) {
+        for (role, _) in server_roles.drain().take(1) {
             self.server_roles.insert(role);
         }
 
@@ -248,10 +270,11 @@ impl Client {
 
     /// Leaves the current realm and terminates the session with the server
     pub async fn leave_realm(&mut self) -> Result<(), WampError> {
-
-         // Make sure we are still connected to a server
-         if !self.is_connected() {
-            return Err(From::from("The client is currently not connected".to_string()));
+        // Make sure we are still connected to a server
+        if !self.is_connected() {
+            return Err(From::from(
+                "The client is currently not connected".to_string(),
+            ));
         }
 
         // Nothing to do if not currently in a session
@@ -261,37 +284,56 @@ impl Client {
 
         // Send the request
         let (res, result) = oneshot::channel();
-        if let Err(e) = self.ctl_channel.send(Request::Leave {res}) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+        if let Err(e) = self.ctl_channel.send(Request::Leave { res }) {
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         match result.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         Ok(())
-    } 
+    }
 
     /// Subscribes to events for the specifiec topic
-    /// 
+    ///
     /// This function returns a subscription ID (required to unsubscribe) and
     /// the receive end of a channel for events published on the topic.
-    pub async fn subscribe<T: AsRef<str>>(&self, topic: T) -> Result<(WampId, SubscriptionQueue), WampError> {
+    pub async fn subscribe<T: AsRef<str>>(
+        &self,
+        topic: T,
+    ) -> Result<(WampId, SubscriptionQueue), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Subscribe {
             uri: topic.as_ref().to_string(),
             res,
         }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         let (sub_id, evt_queue) = match result.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         Ok((sub_id, evt_queue))
@@ -301,27 +343,38 @@ impl Client {
     pub async fn unsubscribe(&self, sub_id: WampId) -> Result<(), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
-        if let Err(e) = self.ctl_channel.send(Request::Unsubscribe {
-            sub_id,
-            res,
-        }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+        if let Err(e) = self.ctl_channel.send(Request::Unsubscribe { sub_id, res }) {
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         match result.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         Ok(())
     }
 
     /// Publishes an event on a specific topic
-    /// 
+    ///
     /// The caller can set `acknowledge` to true to receive unique IDs from the server
     /// for each published event.
-    pub async fn publish<T: AsRef<str>>(&self, topic: T, arguments: WampArgs, arguments_kw: WampKwArgs, acknowledge: bool) -> Result<Option<WampId>, WampError> {
+    pub async fn publish<T: AsRef<str>>(
+        &self,
+        topic: T,
+        arguments: WampArgs,
+        arguments_kw: WampKwArgs,
+        acknowledge: bool,
+    ) -> Result<Option<WampId>, WampError> {
         let mut options = WampDict::new();
 
         if acknowledge {
@@ -336,7 +389,10 @@ impl Client {
             arguments_kw,
             res,
         }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         let pub_id = if acknowledge {
@@ -344,7 +400,12 @@ impl Client {
             Some(match result.await {
                 Ok(Ok(r)) => r.unwrap(),
                 Ok(Err(e)) => return Err(From::from(format!("Failed to send publish : {}", e))),
-                Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+                Err(e) => {
+                    return Err(From::from(format!(
+                        "Core never returned a response : {}",
+                        e
+                    )))
+                }
             })
         } else {
             None
@@ -366,15 +427,23 @@ impl Client {
         if let Err(e) = self.ctl_channel.send(Request::Register {
             uri: uri.as_ref().to_string(),
             res,
-            func_ptr: Box::new(move |a,k| Box::pin(func_ptr(a,k))),
+            func_ptr: Box::new(move |a, k| Box::pin(func_ptr(a, k))),
         }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         let rpc_id = match result.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         Ok(rpc_id)
@@ -384,25 +453,34 @@ impl Client {
     pub async fn unregister(&self, rpc_id: WampId) -> Result<(), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
-        if let Err(e) = self.ctl_channel.send(Request::Unregister {
-            rpc_id,
-            res,
-        }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+        if let Err(e) = self.ctl_channel.send(Request::Unregister { rpc_id, res }) {
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         match result.await {
             Ok(r) => r?,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         Ok(())
     }
 
     /// Calls a registered RPC endpoint on the server
-    pub async fn call<T: AsRef<str>>(&self, uri: T, arguments: WampArgs, arguments_kw: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
-
+    pub async fn call<T: AsRef<str>>(
+        &self,
+        uri: T,
+        arguments: WampArgs,
+        arguments_kw: WampKwArgs,
+    ) -> Result<(WampArgs, WampKwArgs), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Call {
@@ -412,13 +490,21 @@ impl Client {
             arguments_kw,
             res,
         }) {
-            return Err(From::from(format!("Core never received our request : {}", e)));
+            return Err(From::from(format!(
+                "Core never received our request : {}",
+                e
+            )));
         }
 
         // Wait for the result
         let res = match result.await {
             Ok(r) => r,
-            Err(e) => return Err(From::from(format!("Core never returned a response : {}", e))),
+            Err(e) => {
+                return Err(From::from(format!(
+                    "Core never returned a response : {}",
+                    e
+                )))
+            }
         };
 
         res
@@ -440,11 +526,13 @@ impl Client {
                         _ => ClientState::Disconnected(Ok(())),
                     };
                 }
-            },
+            }
             Err(TryRecvError::Closed) => {
-                self.core_status = ClientState::Disconnected(Err(From::from(format!("Core has exited unexpectedly..."))));
-            },
-            Err(TryRecvError::Empty) => {},
+                self.core_status = ClientState::Disconnected(Err(From::from(format!(
+                    "Core has exited unexpectedly..."
+                ))));
+            }
+            Err(TryRecvError::Empty) => {}
         }
 
         &self.core_status
@@ -460,24 +548,23 @@ impl Client {
 
     /// Blocks the caller until the connection with the server is terminated
     pub async fn block_until_disconnect(&mut self) -> &ClientState {
-
         // Wait until the event loop is running
         match self.get_status() {
             &ClientState::NoEventLoop => {
                 match self.core_res.recv().await {
                     Some(Ok(_)) => self.core_status = ClientState::Running,
                     Some(Err(e)) => self.core_status = ClientState::Disconnected(Err(e)),
-                    None => {},
+                    None => {}
                 };
-            },
+            }
             &ClientState::Disconnected(_) => return &self.core_status,
-            _ => {},
+            _ => {}
         };
 
         // Wait until the event loop stops
         match self.core_res.recv().await {
             Some(s) => self.core_status = ClientState::Disconnected(s),
-            None => {},
+            None => {}
         };
 
         &self.core_status
@@ -495,7 +582,7 @@ impl Client {
             match self.core_res.recv().await {
                 Some(Err(e)) => error!("Error while shutting down : {:?}", e),
                 None => error!("Core never sent a status after shutting down..."),
-                _ => {},
+                _ => {}
             }
         }
     }
