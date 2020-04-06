@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Connect to the server
     let (mut client, (evt_loop, rpc_evt_queue)) = Client::connect(
-        "wss://localhost:8080",
+        "wss://localhost:8080/ws",
         Some(
             ClientConfig::default()
                 // Allow invalid/self signed certs
