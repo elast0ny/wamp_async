@@ -10,32 +10,33 @@ An asynchronous [WAMP](https://wamp-proto.org/) client implementation written in
 For usage examples, see :
 - [Publisher/Subscriber](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/pubsub.rs)
 ```rust
-match client.publish("peer.heartbeat", None, None, true).await {
-    Ok(pub_id) => println!("\tPublish id {:X}", pub_id),
-    Err(e) => println!("publish error {}", e),
-};
-//<...>
+// Publish event with no arguments and with acknowledgment
+let ack_id = client.publish("peer.heartbeat", None, None, true).await?;
+println!("Ack id {}", ack_id.unwrap());
+```
+```rust
+// Register for events
 let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat").await?;
-
+// Wait for the next event
 match event_queue.recv().await {
-    Some((_pub_id, args, kwargs)) => println!("\tEvent(args: {:?}, kwargs: {:?})", args, kwargs),
-    None => println!("event queue is closed"),
+    Some((_pub_id, args, kwargs)) => println!("Event(args: {:?}, kwargs: {:?})", args, kwargs),
+    None => println!("Event queue closed"),
 };
 ```
-- [RPC caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs)
+- RPC [caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs) & [callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
 ```rust
-match client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await {
-    Ok((res_args, res_kwargs)) => println!("\tGot {:?} {:?}", res_args, res_kwargs),
-    Err(e) => println!("Error calling ({:?})", e),
-};
+// Call endpoint with one argument
+let (args, kwargs) = client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await?;
+println!("RPC returned {:?} {:?}", args, kwargs);
 ```
-- [RPC callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
 ```rust
+// Declare your RPC function
 async fn rpc_echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
     println!("peer.echo {:?} {:?}", args, kwargs);
     Ok((args, kwargs))
 }
-//<...>
+
+// Register the function
 let rpc_id = client.register("peer.echo", rpc_echo).await?;
 ```
 
