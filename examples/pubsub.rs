@@ -4,24 +4,18 @@ use wamp_async::{Client, ClientConfig};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect(
+
+    // Connect to the server
+    let (mut client, (evt_loop, _rpc_evt_queue)) = Client::connect(
         "tcps://localhost:8081",
-        Some(ClientConfig::new().set_ssl_verify(false)),
+        Some(ClientConfig::default().set_ssl_verify(false)),
     )
     .await?;
     println!("Connected !!");
 
-    let evt_loop = client.event_loop()?.0;
-
-    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
-
     // Spawn the event loop
-    tokio::spawn(async move {
-        wait_event_loop_tx.send(()).unwrap();
-        evt_loop.await
-    });
+    tokio::spawn(evt_loop);
 
-    wait_event_tool_rx.await?;
     println!("Joining realm");
     client.join_realm("realm1").await?;
 

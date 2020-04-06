@@ -120,7 +120,6 @@ pub struct Client {
     /// Configuration struct used to customize the client
     config: ClientConfig,
     /// Generic transport
-    conn: Option<Core>,
     core_res: UnboundedReceiver<Result<(), WampError>>,
     core_status: ClientState,
     /// Roles supported by the server
@@ -144,15 +143,24 @@ pub enum ClientState {
 impl Client {
     /// Connects to a WAMP server using the specified protocol
     ///
-    /// Currently supported protocols are :
-    /// - WebSocket : `ws://some.site.com/wamp` | (Secure) `wss://localhost:8080`
-    /// - RawSocket : `tcp://some.site.com:80` | (Secure) `tcps://localhost:443`
+    /// __Note__
     ///
-    /// Extra customization can be specified through the ClientConfig struct
+    /// On success, this function returns :
+    /// -  Client : Used to interact with the server
+    /// -  Main event loop Future : __This MUST be spawned by the caller__ (e.g using tokio::spawn())
+    /// -  RPC event queue : If you register RPC endpoints, you MUST spawn a seperate task to also handle these events
+    ///
+    /// To customize parmeters used for the connection, see the [ClientConfig](struct.ClientConfig.html) struct
     pub async fn connect<T: AsRef<str>>(
         uri: T,
         cfg: Option<ClientConfig>,
-    ) -> Result<Self, WampError> {
+    ) -> Result<
+        (
+            Self,
+            (GenericFuture, Option<UnboundedReceiver<GenericFuture>>),
+        ),
+        WampError,
+    > {
         let uri = match Url::parse(uri.as_ref()) {
             Ok(u) => u,
             Err(e) => return Err(WampError::InvalidUri(e)),
@@ -169,61 +177,32 @@ impl Client {
 
         let ctl_sender = ctl_channel.clone();
         // Establish a connection
-        let conn = Core::connect(&uri, &config, (ctl_sender, ctl_receiver), core_res_w).await?;
+        let mut conn = Core::connect(&uri, &config, (ctl_sender, ctl_receiver), core_res_w).await?;
 
-        Ok(Client {
-            config,
-            conn: Some(conn),
-            server_roles: HashSet::new(),
-            session_id: None,
-            ctl_channel,
-            core_res,
-            core_status: ClientState::NoEventLoop,
-        })
-    }
-
-    /// This function must be called by the client after a succesful connection.
-    /// It returns a future for the event loop which MUST be executed by the caller.
-    /// It also returns the receiving end of a channel (if the client has the 'callee' role) which is reponsible for receiving RPC call futures. The caller
-    /// is also responsible for executing the RPC call futures in whatever way they wish.async_trait
-    ///
-    /// This allows the caller to use whatever runtime & task execution method they wish
-    pub fn event_loop(
-        &mut self,
-    ) -> Result<
-        (
-            std::pin::Pin<Box<dyn Future<Output = ()> + Send>>,
-            Option<UnboundedReceiver<GenericFuture>>,
-        ),
-        WampError,
-    > {
-        let mut core = match self.conn.take() {
-            Some(c) => c,
-            None => return Err(From::from("Event loop already running".to_string())),
-        };
-
-        let rpc_evt_queue = if self.config.roles.contains(&ClientRole::Callee) {
-            core.rpc_event_queue_r.take()
+        let rpc_evt_queue = if config.roles.contains(&ClientRole::Callee) {
+            conn.rpc_event_queue_r.take()
         } else {
             None
         };
 
-        Ok((Box::pin(core.event_loop()), rpc_evt_queue))
+        Ok((
+            Client {
+                config,
+                server_roles: HashSet::new(),
+                session_id: None,
+                ctl_channel,
+                core_res,
+                core_status: ClientState::NoEventLoop,
+            },
+            (Box::pin(conn.event_loop()), rpc_evt_queue),
+        ))
     }
 
     /// Attempts to join a realm and start a session with the server
     pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
-        
-        // Make sure someone called event_loop()
-        if self.conn.is_some() {
-            // This is a developer error from the caller, panic so it gets fixed
-            panic!("Unable to send requests as the event loop is not running. Try calling event_loop() and spawning the returned Future(s)");
-        }
-
+        // Make sure the event loop is ready to process requests
         if let ClientState::NoEventLoop = self.get_cur_status() {
-            debug!(
-                "Called join_realm() before th event loop is ready... Waiting..."
-            );
+            debug!("Called join_realm() before th event loop is ready... Waiting...");
             self.wait_for_status_change().await;
         }
 
@@ -526,6 +505,7 @@ impl Client {
     pub fn get_cur_status(&mut self) -> &ClientState {
         // Check to see if the status changed
         let new_status = self.core_res.try_recv();
+        #[allow(clippy::match_wild_err_arm)]
         match new_status {
             Ok(state) => self.set_next_status(state),
             Err(TryRecvError::Empty) => &self.core_status,

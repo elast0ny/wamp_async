@@ -21,7 +21,9 @@ async fn echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArg
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect(
+
+    // Connect to the server
+    let (mut client, (evt_loop, rpc_evt_queue)) = Client::connect(
         "wss://localhost:8080",
         Some(
             ClientConfig::default()
@@ -34,18 +36,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     println!("Connected !!");
 
-    let (evt_loop, rpc_event_queue) = client.event_loop()?;
-
-    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
-
     // Spawn the event loop
-    tokio::spawn(async move {
-        wait_event_loop_tx.send(()).unwrap();
-        evt_loop.await
-    });
+    tokio::spawn(evt_loop);
+
     // Handle RPC events in separate tasks
     tokio::spawn(async move {
-        let mut rpc_event_queue = rpc_event_queue.unwrap();
+        let mut rpc_event_queue = rpc_evt_queue.unwrap();
         loop {
             // Wait for an RPC call
             let rpc_event = match rpc_event_queue.recv().await {
@@ -53,12 +49,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 None => break,
             };
 
-            // Run it in its own task
+            // Execute the function call
             tokio::spawn(rpc_event);
         }
     });
 
-    wait_event_tool_rx.await?;
     println!("Joining realm");
     client.join_realm("realm1").await?;
 

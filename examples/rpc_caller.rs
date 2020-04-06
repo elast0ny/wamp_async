@@ -4,7 +4,9 @@ use wamp_async::{Arg, Client, ClientConfig, ClientRole, SerializerType};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect(
+
+    // Connect to the server
+    let (mut client, (evt_loop, _rpc_evt_queue)) = Client::connect(
         "wss://localhost:8080",
         Some(
             ClientConfig::default()
@@ -18,25 +20,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
     println!("Connected !!");
 
-    let (evt_loop, _) = client.event_loop()?;
-
-    let (wait_event_loop_tx, wait_event_tool_rx) = tokio::sync::oneshot::channel();
-
     // Spawn the event loop
-    tokio::spawn(async move {
-        wait_event_loop_tx.send(()).unwrap();
-        evt_loop.await
-    });
-
-    wait_event_tool_rx.await?;
+    tokio::spawn(evt_loop);
 
     println!("Joining realm");
     client.join_realm("realm1").await?;
 
-    // Call an RPC endpoint 5 times
     let mut num_calls: u64 = 0;
     loop {
         println!("Calling 'peer.echo'");
+
+        // Call the RPC endpoint and wait for the result
         match client
             .call("peer.echo", Some(vec![Arg::Integer(12)]), None)
             .await
@@ -47,6 +41,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 break;
             }
         };
+
+        // Stop after calling 5 times
         num_calls += 1;
         if num_calls >= 5 {
             break;
