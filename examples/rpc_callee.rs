@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
 
     // Client should not have disconnected
-    if let ClientState::Disconnected(Err(e)) = client.get_status() {
+    if let ClientState::Disconnected(Err(e)) = client.get_cur_status() {
         println!("Client disconnected because of : {:?}", e);
         return Err(From::from("Unexpected disconnect".to_string()));
     }

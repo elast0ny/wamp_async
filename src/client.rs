@@ -213,6 +213,20 @@ impl Client {
 
     /// Attempts to join a realm and start a session with the server
     pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
+        
+        // Make sure someone called event_loop()
+        if self.conn.is_some() {
+            // This is a developer error from the caller, panic so it gets fixed
+            panic!("Unable to send requests as the event loop is not running. Try calling event_loop() and spawning the returned Future(s)");
+        }
+
+        if let ClientState::NoEventLoop = self.get_cur_status() {
+            debug!(
+                "Called join_realm() before th event loop is ready... Waiting..."
+            );
+            self.wait_for_status_change().await;
+        }
+
         // Make sure we are still connected to a server
         if !self.is_connected() {
             return Err(From::from(
@@ -509,60 +523,78 @@ impl Client {
     }
 
     /// Returns the current client status
-    pub fn get_status(&mut self) -> &ClientState {
-
-        // Get the latest status in case something changed
+    pub fn get_cur_status(&mut self) -> &ClientState {
+        // Check to see if the status changed
         let new_status = self.core_res.try_recv();
         match new_status {
-            Ok(state) => {
-                if let Err(e) = state {
-                    // Error occured
-                    self.core_status = ClientState::Disconnected(Err(e));
-                } else {
-                    //Transition to running or disconnected depending on previous state
-                    self.core_status = match self.core_status {
-                        ClientState::NoEventLoop => ClientState::Running,
-                        _ => ClientState::Disconnected(Ok(())),
-                    };
-                }
-            }
-            Err(TryRecvError::Closed) => {
-                self.core_status = ClientState::Disconnected(Err(From::from(
-                    "Core has exited unexpectedly...".to_string(),
-                )));
-            }
-            Err(TryRecvError::Empty) => {}
+            Ok(state) => self.set_next_status(state),
+            Err(TryRecvError::Empty) => &self.core_status,
+            Err(_) => panic!("The event loop died without sending a new status"),
         }
-
-        &self.core_status
     }
 
     /// Returns whether we are connected to the server or not
     pub fn is_connected(&mut self) -> bool {
-        match self.get_status() {
+        match self.get_cur_status() {
             ClientState::Running => true,
             _ => false,
         }
     }
 
-    /// Blocks the caller until the connection with the server is terminated
-    pub async fn block_until_disconnect(&mut self) -> &ClientState {
-        // Wait until the event loop is running
-        match self.get_status() {
+    fn set_next_status(&mut self, new_status: Result<(), WampError>) -> &ClientState {
+        // Error means disconnection
+        if new_status.is_err() {
+            self.core_status = ClientState::Disconnected(new_status);
+            return &self.core_status;
+        }
+
+        // Progress to next state
+        match self.core_status {
             ClientState::NoEventLoop => {
-                match self.core_res.recv().await {
-                    Some(Ok(_)) => self.core_status = ClientState::Running,
-                    Some(Err(e)) => self.core_status = ClientState::Disconnected(Err(e)),
-                    None => {}
-                };
+                self.core_status = ClientState::Running;
             }
-            ClientState::Disconnected(_) => return &self.core_status,
-            _ => {}
+            ClientState::Running => {
+                self.core_status = ClientState::Disconnected(new_status);
+            }
+            ClientState::Disconnected(_) => {
+                panic!("Got new core status after already being disconnected");
+            }
+        }
+
+        &self.core_status
+    }
+
+    // Waits until the event loop sends a status change event
+    // This will update the current core_status field
+    async fn wait_for_status_change(&mut self) -> &ClientState {
+        // State cant change if disconnected
+        if let ClientState::Disconnected(ref _r) = self.core_status {
+            return &self.core_status;
+        }
+
+        // Yield until we receive something
+        let new_status = match self.core_res.recv().await {
+            Some(v) => v,
+            None => {
+                panic!("The event loop died without sending a new status");
+            }
         };
 
-        // Wait until the event loop stops
-        if let Some(s) = self.core_res.recv().await {
-            self.core_status = ClientState::Disconnected(s);
+        // Save the new status
+        self.set_next_status(new_status)
+    }
+
+    /// Blocks the caller until the connection with the server is terminated
+    pub async fn block_until_disconnect(&mut self) -> &ClientState {
+        let mut cur_status = self.get_cur_status();
+        loop {
+            match cur_status {
+                ClientState::Disconnected(_) => break,
+                _ => {
+                    // Wait until status changes
+                    cur_status = self.wait_for_status_change().await;
+                }
+            }
         }
 
         &self.core_status
