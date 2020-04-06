@@ -9,32 +9,33 @@ pub mod msgpack;
 #[derive(Debug, Copy, Clone)]
 /// Message serialization algorithms
 pub enum SerializerType {
-    Invalid = 0,
     Json = 1,
     MsgPack = 2,
     // 3 - 15 reserved
 }
 
-impl SerializerType {
-    /// Returns the WAMP string representation of the serializer
-    pub fn to_str(&self) -> &'static str {
-        match self {
-            &SerializerType::Json => "wamp.2.json",
-            &SerializerType::MsgPack => "wamp.2.msgpack",
-            _ => "wamp.2.invalid",
+impl std::str::FromStr for SerializerType {
+    type Err = crate::serializer::SerializerError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == SerializerType::Json.to_str() {
+            Ok(SerializerType::Json)
+        } else if s == SerializerType::MsgPack.to_str() {
+            Ok(SerializerType::MsgPack)
+        } else {
+            Err(crate::serializer::SerializerError::UnknownSerializer(
+                s.to_string(),
+            ))
         }
     }
+}
 
-    /// Converts the WAMP serializer string to its enum variant
-    pub fn from_str<T: AsRef<str>>(in_str: T) -> Self {
-        let s = in_str.as_ref();
-
-        if s == SerializerType::Json.to_str() {
-            SerializerType::Json
-        } else if s == SerializerType::MsgPack.to_str() {
-            SerializerType::MsgPack 
-        } else {
-            SerializerType::Invalid
+impl SerializerType {
+    /// Returns the WAMP string representation of the serializer
+    pub fn to_str(self) -> &'static str {
+        match self {
+            SerializerType::Json => "wamp.2.json",
+            SerializerType::MsgPack => "wamp.2.msgpack",
         }
     }
 }
@@ -50,9 +51,12 @@ quick_error! {
             description("Failed to deserialize message")
             display(_self) -> ("{} : {}", _self, e)
         }
+        UnknownSerializer(e: String) {
+            description("Unknown serializer specified")
+            display(_self) -> ("{} : {}", _self, e)
+        }
     }
 }
-
 
 pub trait SerializerImpl {
     fn pack(&self, value: &Msg) -> Result<Vec<u8>, SerializerError>;

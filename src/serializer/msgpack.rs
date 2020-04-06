@@ -1,6 +1,6 @@
-use rmp_serde::{to_vec, from_slice};
 use crate::message::*;
 use crate::serializer::*;
+use rmp_serde::{from_slice, to_vec};
 
 pub struct MsgPackSerializer {}
 impl SerializerImpl for MsgPackSerializer {

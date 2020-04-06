@@ -1,12 +1,14 @@
 use std::error::Error;
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use lazy_static::*;
 
-use wamp_async::{Client, WampArgs, WampKwArgs, WampError, ClientConfig, SerializerType, ClientState};
+use wamp_async::{
+    Client, ClientConfig, ClientState, SerializerType, WampArgs, WampError, WampKwArgs,
+};
 
 lazy_static! {
-    static ref RPC_CALL_COUNT: AtomicU8 = {AtomicU8::new(0)};
+    static ref RPC_CALL_COUNT: AtomicU64 = { AtomicU64::new(0) };
 }
 
 // Simply return the rpc arguments
@@ -19,25 +21,27 @@ async fn echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArg
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect(
-        "wss://localhost:8080",
+
+    // Connect to the server
+    let (mut client, (evt_loop, rpc_evt_queue)) = Client::connect(
+        "wss://localhost:8080/ws",
         Some(
-            ClientConfig::new()
+            ClientConfig::default()
                 // Allow invalid/self signed certs
                 .set_ssl_verify(false)
                 // Use MsgPack first or fallback to Json
-                .set_serializers(vec![SerializerType::MsgPack, SerializerType::Json])
-        )
-    ).await?;
+                .set_serializers(vec![SerializerType::MsgPack, SerializerType::Json]),
+        ),
+    )
+    .await?;
     println!("Connected !!");
-
-    let (evt_loop, rpc_event_queue) = client.event_loop()?;
 
     // Spawn the event loop
     tokio::spawn(evt_loop);
-    // Handle RPC events in seperate tasks
+
+    // Handle RPC events in separate tasks
     tokio::spawn(async move {
-        let mut rpc_event_queue = rpc_event_queue.unwrap();
+        let mut rpc_event_queue = rpc_evt_queue.unwrap();
         loop {
             // Wait for an RPC call
             let rpc_event = match rpc_event_queue.recv().await {
@@ -45,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 None => break,
             };
 
-            //Run it in its own task
+            // Execute the function call
             tokio::spawn(rpc_event);
         }
     });
@@ -62,11 +66,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if call_num >= 5 || !client.is_connected() {
             break;
         }
-        std::thread::sleep(std::time::Duration::from_secs(1));
+        tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
     }
 
     // Client should not have disconnected
-    if let ClientState::Disconnected(Err(e)) = client.get_status() {
+    if let ClientState::Disconnected(Err(e)) = client.get_cur_status() {
         println!("Client disconnected because of : {:?}", e);
         return Err(From::from("Unexpected disconnect".to_string()));
     }
@@ -77,7 +81,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     client.leave_realm().await?;
 
     client.disconnect().await;
-
 
     Ok(())
 }

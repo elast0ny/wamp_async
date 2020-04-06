@@ -4,13 +4,17 @@ use wamp_async::{Client, ClientConfig};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
-    let mut client = Client::connect("tcps://localhost:8081", Some(
-        ClientConfig::new().set_ssl_verify(false)
-    )).await?;
+
+    // Connect to the server
+    let (mut client, (evt_loop, _rpc_evt_queue)) = Client::connect(
+        "tcps://localhost:8081",
+        Some(ClientConfig::default().set_ssl_verify(false)),
+    )
+    .await?;
     println!("Connected !!");
 
     // Spawn the event loop
-    tokio::spawn(client.event_loop()?.0);
+    tokio::spawn(evt_loop);
 
     println!("Joining realm");
     client.join_realm("realm1").await?;
@@ -22,28 +26,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
     if let Some(_) = std::env::args().find(|a| a == "pub") {
         loop {
             match client.publish("peer.heartbeat", None, None, true).await {
-                Ok(pub_id) => println!("\tSent event id {:X}", pub_id),
+                Ok(pub_id) => println!("\tSent event id {}", pub_id.unwrap()),
                 Err(e) => {
                     println!("publish error {}", e);
                     break;
                 }
             };
             cur_event_num += 1;
-            //Exit before sleeping
+            // Exit before sleeping
             if cur_event_num >= max_events {
                 break;
             }
             tokio::time::delay_for(std::time::Duration::from_secs(1)).await
-        }  
+        }
     // Start as a subscriber
     } else {
-        println!("Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument");
+        println!(
+            "Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument"
+        );
         let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat").await?;
         println!("Waiting for {} heartbeats...", max_events);
 
         while cur_event_num < max_events {
             match heartbeat_queue.recv().await {
-                Some((pub_id, args, kwargs)) => println!("\tGot {:X} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs),
+                Some((pub_id, args, kwargs)) => {
+                    println!("\tGot {} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs)
+                }
                 None => println!("Subscription is done"),
             };
             cur_event_num += 1;
@@ -51,7 +59,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         client.unsubscribe(sub_id).await?;
     }
-    
+
     println!("Leaving realm");
     client.leave_realm().await?;
 
