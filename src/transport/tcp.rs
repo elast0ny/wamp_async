@@ -203,7 +203,7 @@ impl MsgPrefix {
 
 enum SockWrapper {
     Plain(TcpStream),
-    Tls(tokio_tls::TlsStream<TcpStream>),
+    Tls(Box<tokio_tls::TlsStream<TcpStream>>),
 }
 impl SockWrapper {
     pub fn close(&mut self) {
@@ -333,7 +333,7 @@ pub async fn connect(
     for serializer in config.get_serializers() {
         trace!("Connecting to host : {}", host_addr);
         let mut stream = if is_tls {
-            SockWrapper::Tls(connect_tls(host_ip, host_port, config).await?)
+            SockWrapper::Tls(Box::new(connect_tls(host_ip, host_port, config).await?))
         } else {
             SockWrapper::Plain(connect_raw(host_ip, host_port).await?)
         };

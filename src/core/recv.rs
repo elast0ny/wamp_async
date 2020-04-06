@@ -131,6 +131,23 @@ pub async fn unregisterd(core: &mut Core, request: WampId) -> Status {
 
     Status::Ok
 }
+
+/// Runs the RPC function and forwards the result
+async fn rpc_func_runner(
+    ctl_channel: UnboundedSender<Request>,
+    request: WampId,
+    rpc_func: RpcFuture,
+) -> Result<(), WampError> {
+    // Run the RPC func
+    let res = rpc_func.await;
+
+    // Send the result
+    match ctl_channel.send(Request::InvocationResult { request, res }) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(From::from("Event loop has died !".to_string())),
+    }
+}
+
 pub async fn invocation(
     core: &mut Core,
     request: WampId,
@@ -156,15 +173,7 @@ pub async fn invocation(
     // Forward the event to the client
     if core
         .rpc_event_queue_w
-        .send(Box::pin(async move {
-            match ctl_channel.send(Request::InvocationResult {
-                request,
-                res: func_future.await,
-            }) {
-                Ok(_) => Ok(()),
-                Err(_) => Err(From::from("Event loop has died !".to_string())),
-            }
-        }))
+        .send(Box::pin(rpc_func_runner(ctl_channel, request, func_future)))
         .is_err()
     {
         warn!(

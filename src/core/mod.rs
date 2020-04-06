@@ -158,7 +158,7 @@ impl Core {
     }
 
     /// Event loop that handles outbound/inboud events
-    pub async fn event_loop(mut self) {
+    pub async fn event_loop(mut self) -> Result<(), WampError> {
         let mut ctl_channel = self.ctl_channel.take().unwrap();
 
         // Notify the client that we are now running the event loop
@@ -205,6 +205,8 @@ impl Core {
         debug!("Event loop shutting down !");
 
         self.shutdown().await;
+
+        Ok(())
     }
 
     /// Handles unsolicited messages from the peer (events, rpc calls, etc...)

@@ -7,13 +7,14 @@ use crate::common::*;
 use crate::core::*;
 use crate::message::*;
 
+pub type JoinRealmResult = Result<(WampId, HashMap<WampString, Arg>), WampError>;
 pub enum Request {
     Shutdown,
     Join {
         uri: WampString,
         roles: HashSet<ClientRole>,
         agent_str: Option<WampString>,
-        res: Sender<Result<(WampId, HashMap<WampString, Arg>), WampError>>,
+        res: Sender<JoinRealmResult>,
     },
     Leave {
         res: Sender<Result<(), WampError>>,
