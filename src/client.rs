@@ -510,8 +510,9 @@ impl Client {
 
     /// Returns the current client status
     pub fn get_status(&mut self) -> &ClientState {
-        let new_status = self.core_res.try_recv();
 
+        // Get the latest status in case something changed
+        let new_status = self.core_res.try_recv();
         match new_status {
             Ok(state) => {
                 if let Err(e) = state {
