@@ -93,13 +93,13 @@ pub enum ClientRole {
 }
 impl ClientRole {
     /// Returns the string repesentation of the role
-    pub fn to_string(&self) -> String {
-        String::from(match self {
-            &ClientRole::Caller => "caller",
-            &ClientRole::Callee => "callee",
-            &ClientRole::Publisher => "publisher",
-            &ClientRole::Subscriber => "subscriber",
-        })
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            ClientRole::Caller => "caller",
+            ClientRole::Callee => "callee",
+            ClientRole::Publisher => "publisher",
+            ClientRole::Subscriber => "subscriber",
+        }
     }
 }
 
@@ -112,11 +112,11 @@ pub enum ServerRole {
 }
 impl ServerRole {
     /// Returns the string repesentation of the role
-    pub fn to_string(&self) -> String {
-        String::from(match self {
-            &ServerRole::Router => "router",
-            &ServerRole::Broker => "broker",
-        })
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            ServerRole::Router => "router",
+            ServerRole::Broker => "broker",
+        }
     }
 }
 
@@ -160,7 +160,7 @@ pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 /// Future that can return success or an error

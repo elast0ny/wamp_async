@@ -33,9 +33,9 @@ impl TcpMsg {
     }
     pub fn to_id(&self) -> u8 {
         match self {
-            &TcpMsg::Regular => TcpMsg::Regular as u8,
-            &TcpMsg::Ping => TcpMsg::Ping as u8,
-            &TcpMsg::Pong => TcpMsg::Pong as u8,
+            TcpMsg::Regular => TcpMsg::Regular as u8,
+            TcpMsg::Ping => TcpMsg::Ping as u8,
+            TcpMsg::Pong => TcpMsg::Pong as u8,
         }
     }
 }
@@ -55,16 +55,16 @@ impl std::fmt::Debug for HandshakeCtx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "0x{:02X}{:02X}{:02X}{:02X} (MsgSize : 0x{:X}, Serializer : {:?})",
+            "0x{:02X}{:02X}{:02X}{:02X} (MsgSize : 0x{:X}, Serializer : {})",
             self.client[0],
             self.client[1],
             self.client[2],
             self.client[3],
             1 << ((self.client[1] >> 4) + 9),
             match self.client[1] & 0x0F {
-                x if x == SerializerType::Json as u8 => SerializerType::Json,
-                x if x == SerializerType::MsgPack as u8 => SerializerType::MsgPack,
-                _ => SerializerType::Invalid,
+                x if x == SerializerType::Json as u8 => SerializerType::Json.to_str(),
+                x if x == SerializerType::MsgPack as u8 => SerializerType::MsgPack.to_str(),
+                _ => "<unknown>",
             }
         )
     }
@@ -134,7 +134,7 @@ impl HandshakeCtx {
 
             let server_error: u8 = (self.server[1] & 0xF0) >> 4 as u8;
             return Err(match server_error {
-                1 => TransportError::SerializerNotSupported(self.serializer),
+                1 => TransportError::SerializerNotSupported(self.serializer.to_str().to_string()),
                 2 => TransportError::InvalidMaximumMsgSize(self.msg_size),
                 4 => TransportError::MaximumServerConn,
                 _ => TransportError::UnexpectedResponse,
@@ -259,8 +259,7 @@ impl Drop for TcpTransport {
 #[async_trait]
 impl Transport for TcpTransport {
     async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
-        let payload: &[u8] = data.as_ref();
-        let header: MsgPrefix = MsgPrefix::new_from(&TcpMsg::Regular, Some(payload.len() as u32));
+        let header: MsgPrefix = MsgPrefix::new_from(&TcpMsg::Regular, Some(data.len() as u32));
 
         trace!(
             "Send[0x{:X}] : {:?} ({:?})",
@@ -270,8 +269,8 @@ impl Transport for TcpTransport {
         );
         self.sock.write_all(&header.bytes).await?;
 
-        trace!("Send[0x{:X}] : {:?}", payload.len(), payload);
-        self.sock.write_all(payload).await?;
+        trace!("Send[0x{:X}] : {:?}", data.len(), data);
+        self.sock.write_all(data).await?;
 
         Ok(())
     }
@@ -369,7 +368,7 @@ pub async fn connect(
         return Ok((Box::new(TcpTransport { sock: stream }), *serializer));
     }
 
-    return Err(TransportError::ConnectionFailed);
+    Err(TransportError::ConnectionFailed)
 }
 
 pub async fn connect_raw(host_ip: &str, host_port: u16) -> Result<TcpStream, TransportError> {
@@ -379,7 +378,7 @@ pub async fn connect_raw(host_ip: &str, host_port: u16) -> Result<TcpStream, Tra
         Ok(s) => Ok(s),
         Err(e) => {
             error!("Failed to connect to server using raw tcp: {:?}", e);
-            return Err(TransportError::ConnectionFailed);
+            Err(TransportError::ConnectionFailed)
         }
     }
 }
@@ -408,7 +407,7 @@ pub async fn connect_tls(
         Ok(s) => Ok(s),
         Err(e) => {
             error!("Failed to establish TLS handshake : {:?}", e);
-            return Err(TransportError::ConnectionFailed);
+            Err(TransportError::ConnectionFailed)
         }
     }
 }

@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut client = Client::connect(
         "wss://localhost:8080",
         Some(
-            ClientConfig::new()
+            ClientConfig::default()
                 .set_ssl_verify(false)
                 // Restrict our roles
                 .set_roles(vec![ClientRole::Caller])

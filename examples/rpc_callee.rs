@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let mut client = Client::connect(
         "wss://localhost:8080",
         Some(
-            ClientConfig::new()
+            ClientConfig::default()
                 // Allow invalid/self signed certs
                 .set_ssl_verify(false)
                 // Use MsgPack first or fallback to Json

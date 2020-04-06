@@ -8,8 +8,6 @@ pub mod websocket;
 pub use crate::transport::websocket as ws;
 pub use ws::*;
 
-use crate::serializer::SerializerType;
-
 #[async_trait]
 pub trait Transport {
     /// Sends a whole wamp message over the transport
@@ -29,9 +27,9 @@ quick_error! {
         UnexpectedResponse {
             description("Server responded with unexpected data")
         }
-        SerializerNotSupported(e: SerializerType) {
+        SerializerNotSupported(e: String) {
             description("The current serializer is not supported by the server")
-            display(self_) -> ("{} (Requested : {:?})", self_, e)
+            display(self_) -> ("{} (Requested : {})", self_, e)
         }
         InvalidMaximumMsgSize(e: u32) {
             description("The server did not accept the maximum payload size")

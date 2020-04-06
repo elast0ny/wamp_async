@@ -139,31 +139,28 @@ pub enum Msg {
 
 impl Msg {
     pub fn request_id(&self) -> Option<WampId> {
-        Some(
-            match self {
-                &Msg::Error { ref request, .. } => request,
-                &Msg::Publish { ref request, .. } => request,
-                &Msg::Published { ref request, .. } => request,
-                &Msg::Subscribe { ref request, .. } => request,
-                &Msg::Subscribed { ref request, .. } => request,
-                &Msg::Unsubscribe { ref request, .. } => request,
-                &Msg::Unsubscribed { ref request } => request,
-                &Msg::Call { ref request, .. } => request,
-                &Msg::Result { ref request, .. } => request,
-                &Msg::Register { ref request, .. } => request,
-                &Msg::Registered { ref request, .. } => request,
-                &Msg::Unregister { ref request, .. } => request,
-                &Msg::Unregistered { ref request } => request,
-                &Msg::Yield { ref request, .. } => request,
-                &Msg::Hello { .. }
-                | &Msg::Welcome { .. }
-                | &Msg::Abort { .. }
-                | &Msg::Goodbye { .. }
-                | &Msg::Event { .. }
-                | &Msg::Invocation { .. } => return None,
-            }
-            .clone(),
-        )
+        Some(*match self {
+            Msg::Error { ref request, .. } => request,
+            Msg::Publish { ref request, .. } => request,
+            Msg::Published { ref request, .. } => request,
+            Msg::Subscribe { ref request, .. } => request,
+            Msg::Subscribed { ref request, .. } => request,
+            Msg::Unsubscribe { ref request, .. } => request,
+            Msg::Unsubscribed { ref request } => request,
+            Msg::Call { ref request, .. } => request,
+            Msg::Result { ref request, .. } => request,
+            Msg::Register { ref request, .. } => request,
+            Msg::Registered { ref request, .. } => request,
+            Msg::Unregister { ref request, .. } => request,
+            Msg::Unregistered { ref request } => request,
+            Msg::Yield { ref request, .. } => request,
+            Msg::Hello { .. }
+            | Msg::Welcome { .. }
+            | Msg::Abort { .. }
+            | Msg::Goodbye { .. }
+            | Msg::Event { .. }
+            | Msg::Invocation { .. } => return None,
+        })
     }
 }
 
@@ -178,23 +175,23 @@ impl Serialize for Msg {
     {
         // Converts the enum struct to a tuple representation
         match self {
-            &Msg::Hello {
+            Msg::Hello {
                 ref realm,
                 ref details,
             } => (HELLO_ID, realm, details).serialize(serializer),
-            &Msg::Welcome {
+            Msg::Welcome {
                 ref session,
                 ref details,
             } => (WELCOME_ID, session, details).serialize(serializer),
-            &Msg::Abort {
+            Msg::Abort {
                 ref details,
                 ref reason,
             } => (ABORT_ID, details, reason).serialize(serializer),
-            &Msg::Goodbye {
+            Msg::Goodbye {
                 ref details,
                 ref reason,
             } => (GOODBYE_ID, details, reason).serialize(serializer),
-            &Msg::Error {
+            Msg::Error {
                 ref typ,
                 ref request,
                 ref details,
@@ -219,7 +216,7 @@ impl Serialize for Msg {
                     (ERROR_ID, typ, request, details, error).serialize(serializer)
                 }
             }
-            &Msg::Publish {
+            Msg::Publish {
                 ref request,
                 ref options,
                 ref topic,
@@ -235,25 +232,25 @@ impl Serialize for Msg {
                     (PUBLISH_ID, request, options, topic).serialize(serializer)
                 }
             }
-            &Msg::Published {
+            Msg::Published {
                 ref request,
                 ref publication,
             } => (PUBLISHED_ID, request, publication).serialize(serializer),
-            &Msg::Subscribe {
+            Msg::Subscribe {
                 ref request,
                 ref options,
                 ref topic,
             } => (SUBSCRIBE_ID, request, options, topic).serialize(serializer),
-            &Msg::Subscribed {
+            Msg::Subscribed {
                 ref request,
                 ref subscription,
             } => (SUBSCRIBED_ID, request, subscription).serialize(serializer),
-            &Msg::Unsubscribe {
+            Msg::Unsubscribe {
                 ref request,
                 ref subscription,
             } => (UNSUBSCRIBE_ID, request, subscription).serialize(serializer),
-            &Msg::Unsubscribed { ref request } => (UNSUBSCRIBED_ID, request).serialize(serializer),
-            &Msg::Event {
+            Msg::Unsubscribed { ref request } => (UNSUBSCRIBED_ID, request).serialize(serializer),
+            Msg::Event {
                 ref subscription,
                 ref publication,
                 ref details,
@@ -276,7 +273,7 @@ impl Serialize for Msg {
                     (EVENT_ID, subscription, publication, details).serialize(serializer)
                 }
             }
-            &Msg::Call {
+            Msg::Call {
                 ref request,
                 ref options,
                 ref procedure,
@@ -299,7 +296,7 @@ impl Serialize for Msg {
                     (CALL_ID, request, options, procedure).serialize(serializer)
                 }
             }
-            &Msg::Result {
+            Msg::Result {
                 ref request,
                 ref details,
                 ref arguments,
@@ -313,21 +310,21 @@ impl Serialize for Msg {
                     (RESULT_ID, request, details).serialize(serializer)
                 }
             }
-            &Msg::Register {
+            Msg::Register {
                 ref request,
                 ref options,
                 ref procedure,
             } => (REGISTER_ID, request, options, procedure).serialize(serializer),
-            &Msg::Registered {
+            Msg::Registered {
                 ref request,
                 ref registration,
             } => (REGISTERED_ID, request, registration).serialize(serializer),
-            &Msg::Unregister {
+            Msg::Unregister {
                 ref request,
                 ref registration,
             } => (UNREGISTER_ID, request, registration).serialize(serializer),
-            &Msg::Unregistered { ref request } => (UNREGISTERED_ID, request).serialize(serializer),
-            &Msg::Invocation {
+            Msg::Unregistered { ref request } => (UNREGISTERED_ID, request).serialize(serializer),
+            Msg::Invocation {
                 ref request,
                 ref registration,
                 ref details,
@@ -350,7 +347,7 @@ impl Serialize for Msg {
                     (INVOCATION_ID, request, registration, details).serialize(serializer)
                 }
             }
-            &Msg::Yield {
+            Msg::Yield {
                 ref request,
                 ref options,
                 ref arguments,
@@ -378,156 +375,232 @@ impl<'de> Deserialize<'de> for Msg {
         impl MsgVisitor {
             fn de_hello<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Hello {
-                    realm: v.next_element()?.ok_or(Error::missing_field("realm"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                    realm: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("realm"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
                 })
             }
             fn de_welcome<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Welcome {
-                    session: v.next_element()?.ok_or(Error::missing_field("session"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                    session: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("session"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
                 })
             }
             fn de_abort<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Abort {
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
-                    reason: v.next_element()?.ok_or(Error::missing_field("reason"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
+                    reason: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("reason"))?,
                 })
             }
             fn de_goodbye<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Goodbye {
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
-                    reason: v.next_element()?.ok_or(Error::missing_field("reason"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
+                    reason: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("reason"))?,
                 })
             }
             fn de_error<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Error {
-                    typ: v.next_element()?.ok_or(Error::missing_field("type"))?,
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
-                    error: v.next_element()?.ok_or(Error::missing_field("error"))?,
+                    typ: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("type"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
+                    error: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("error"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_publish<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Publish {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
-                    topic: v.next_element()?.ok_or(Error::missing_field("topic"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    options: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("options"))?,
+                    topic: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("topic"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_published<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Published {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     publication: v
                         .next_element()?
-                        .ok_or(Error::missing_field("publication"))?,
+                        .ok_or_else(|| Error::missing_field("publication"))?,
                 })
             }
             fn de_subscribe<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Subscribe {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
-                    topic: v.next_element()?.ok_or(Error::missing_field("topic"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    options: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("options"))?,
+                    topic: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("topic"))?,
                 })
             }
             fn de_subscribed<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Subscribed {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     subscription: v
                         .next_element()?
-                        .ok_or(Error::missing_field("subscription"))?,
+                        .ok_or_else(|| Error::missing_field("subscription"))?,
                 })
             }
             fn de_unsubscribe<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Unsubscribe {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     subscription: v
                         .next_element()?
-                        .ok_or(Error::missing_field("subscription"))?,
+                        .ok_or_else(|| Error::missing_field("subscription"))?,
                 })
             }
             fn de_unsubscribed<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Unsubscribed {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                 })
             }
             fn de_event<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Event {
                     subscription: v
                         .next_element()?
-                        .ok_or(Error::missing_field("subscription"))?,
+                        .ok_or_else(|| Error::missing_field("subscription"))?,
                     publication: v
                         .next_element()?
-                        .ok_or(Error::missing_field("publication"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                        .ok_or_else(|| Error::missing_field("publication"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_call<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Call {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
-                    procedure: v.next_element()?.ok_or(Error::missing_field("procedure"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    options: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("options"))?,
+                    procedure: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("procedure"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_result<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Result {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_register<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Register {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
-                    procedure: v.next_element()?.ok_or(Error::missing_field("procedure"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    options: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("options"))?,
+                    procedure: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("procedure"))?,
                 })
             }
             fn de_registered<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Registered {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     registration: v
                         .next_element()?
-                        .ok_or(Error::missing_field("registration"))?,
+                        .ok_or_else(|| Error::missing_field("registration"))?,
                 })
             }
             fn de_unregister<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Unregister {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     registration: v
                         .next_element()?
-                        .ok_or(Error::missing_field("registration"))?,
+                        .ok_or_else(|| Error::missing_field("registration"))?,
                 })
             }
             fn de_unregistered<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Unregistered {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                 })
             }
             fn de_invocation<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Invocation {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
                     registration: v
                         .next_element()?
-                        .ok_or(Error::missing_field("registration"))?,
-                    details: v.next_element()?.ok_or(Error::missing_field("details"))?,
+                        .ok_or_else(|| Error::missing_field("registration"))?,
+                    details: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("details"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })
             }
             fn de_yield<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
                 Ok(Msg::Yield {
-                    request: v.next_element()?.ok_or(Error::missing_field("request"))?,
-                    options: v.next_element()?.ok_or(Error::missing_field("options"))?,
+                    request: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("request"))?,
+                    options: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("options"))?,
                     arguments: v.next_element()?.unwrap_or(None),
                     arguments_kw: v.next_element()?.unwrap_or(None),
                 })

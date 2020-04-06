@@ -27,7 +27,7 @@ pub struct ClientConfig {
     ssl_verify: bool,
 }
 
-impl ClientConfig {
+impl Default for ClientConfig {
     /// Creates a client config with reasonnable defaults
     ///
     /// Roles :
@@ -39,7 +39,7 @@ impl ClientConfig {
     /// Serializers :
     /// 1. [SerializerType::Json](enum.SerializerType.html#variant.Json)
     /// 2. [SerializerType::MsgPack](enum.SerializerType.html#variant.MsgPack)
-    pub fn new() -> Self {
+    fn default() -> Self {
         // Config with default values
         ClientConfig {
             agent: String::from(DEFAULT_AGENT_STR),
@@ -57,7 +57,9 @@ impl ClientConfig {
             ssl_verify: true,
         }
     }
+}
 
+impl ClientConfig {
     /// Replaces the default user agent string. Set to a zero length string to disable
     pub fn set_agent<T: AsRef<str>>(mut self, agent: T) -> Self {
         self.agent = String::from(agent.as_ref());
@@ -159,7 +161,7 @@ impl Client {
         let config = match cfg {
             Some(c) => c,
             // Set defaults
-            None => ClientConfig::new(),
+            None => ClientConfig::default(),
         };
 
         let (ctl_channel, ctl_receiver) = mpsc::unbounded_channel();
@@ -231,7 +233,7 @@ impl Client {
         if let Err(e) = self.ctl_channel.send(Request::Join {
             uri: realm.as_ref().to_string(),
             roles: self.config.roles.clone(),
-            agent_str: if self.config.agent.len() > 0 {
+            agent_str: if self.config.agent.is_empty() {
                 Some(self.config.agent.clone())
             } else {
                 None
@@ -497,17 +499,13 @@ impl Client {
         }
 
         // Wait for the result
-        let res = match result.await {
+        match result.await {
             Ok(r) => r,
-            Err(e) => {
-                return Err(From::from(format!(
-                    "Core never returned a response : {}",
-                    e
-                )))
-            }
-        };
-
-        res
+            Err(e) => Err(From::from(format!(
+                "Core never returned a response : {}",
+                e
+            ))),
+        }
     }
 
     /// Returns the current client status
@@ -528,9 +526,9 @@ impl Client {
                 }
             }
             Err(TryRecvError::Closed) => {
-                self.core_status = ClientState::Disconnected(Err(From::from(format!(
-                    "Core has exited unexpectedly..."
-                ))));
+                self.core_status = ClientState::Disconnected(Err(From::from(
+                    "Core has exited unexpectedly...".to_string(),
+                )));
             }
             Err(TryRecvError::Empty) => {}
         }
@@ -550,22 +548,21 @@ impl Client {
     pub async fn block_until_disconnect(&mut self) -> &ClientState {
         // Wait until the event loop is running
         match self.get_status() {
-            &ClientState::NoEventLoop => {
+            ClientState::NoEventLoop => {
                 match self.core_res.recv().await {
                     Some(Ok(_)) => self.core_status = ClientState::Running,
                     Some(Err(e)) => self.core_status = ClientState::Disconnected(Err(e)),
                     None => {}
                 };
             }
-            &ClientState::Disconnected(_) => return &self.core_status,
+            ClientState::Disconnected(_) => return &self.core_status,
             _ => {}
         };
 
         // Wait until the event loop stops
-        match self.core_res.recv().await {
-            Some(s) => self.core_status = ClientState::Disconnected(s),
-            None => {}
-        };
+        if let Some(s) = self.core_res.recv().await {
+            self.core_status = ClientState::Disconnected(s);
+        }
 
         &self.core_status
     }

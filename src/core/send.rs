@@ -67,7 +67,7 @@ pub async fn join_realm(
     let mut client_roles: WampDict = WampDict::new();
     // Add all of our roles
     for role in &roles {
-        client_roles.insert(role.to_string(), Arg::Dict(WampDict::new()));
+        client_roles.insert(String::from(role.to_str()), Arg::Dict(WampDict::new()));
     }
     details.insert("roles".to_owned(), Arg::Dict(client_roles));
 
@@ -79,7 +79,7 @@ pub async fn join_realm(
     if let Err(e) = core
         .send(&Msg::Hello {
             realm: uri,
-            details: details,
+            details,
         })
         .await
     {
@@ -111,7 +111,8 @@ pub async fn join_realm(
     // Return the pertinent info to the caller
     core.valid_session = true;
     let _ = res.send(Ok((session_id, server_roles)));
-    return Status::Ok;
+
+    Status::Ok
 }
 
 /// Handler for any leave realm request. This function will send a GOODBYE and wait for a GOODBYE response
@@ -130,7 +131,8 @@ pub async fn leave_realm(core: &mut Core, res: Sender<Result<(), WampError>>) ->
     }
 
     let _ = res.send(Ok(()));
-    return Status::Ok;
+
+    Status::Ok
 }
 
 pub async fn subscribe(core: &mut Core, topic: WampString, res: PendingSubResult) -> Status {
@@ -150,7 +152,8 @@ pub async fn subscribe(core: &mut Core, topic: WampString, res: PendingSubResult
     }
 
     core.pending_sub.insert(request, res);
-    return Status::Ok;
+
+    Status::Ok
 }
 
 pub async fn unsubscribe(
@@ -185,7 +188,7 @@ pub async fn unsubscribe(
 
     core.pending_transactions.insert(request, res);
 
-    return Status::Ok;
+    Status::Ok
 }
 
 pub async fn publish(
@@ -215,7 +218,7 @@ pub async fn publish(
 
     core.pending_transactions.insert(request, res);
 
-    return Status::Ok;
+    Status::Ok
 }
 
 pub async fn register(
@@ -240,7 +243,7 @@ pub async fn register(
     }
 
     core.pending_register.insert(request, (func_ptr, res));
-    return Status::Ok;
+    Status::Ok
 }
 
 pub async fn unregister(
@@ -275,7 +278,7 @@ pub async fn unregister(
 
     core.pending_transactions.insert(request, res);
 
-    return Status::Ok;
+    Status::Ok
 }
 
 pub async fn invoke_yield(
@@ -299,11 +302,11 @@ pub async fn invoke_yield(
             arguments_kw: None,
         },
     };
-    if let Err(_) = core.send(&msg).await {
+    if core.send(&msg).await.is_err() {
         return Status::Shutdown;
     }
 
-    return Status::Ok;
+    Status::Ok
 }
 
 pub async fn call(
@@ -333,5 +336,5 @@ pub async fn call(
 
     core.pending_call.insert(request, res);
 
-    return Status::Ok;
+    Status::Ok
 }

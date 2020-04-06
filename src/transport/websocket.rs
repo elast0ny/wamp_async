@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use log::*;
+use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     client_async,
@@ -21,13 +22,11 @@ struct WsCtx {
 #[async_trait]
 impl Transport for WsCtx {
     async fn send(&mut self, data: &[u8]) -> Result<(), TransportError> {
-        let payload: &[u8] = data.as_ref();
-
-        trace!("Send[0x{:X}] : {:?}", payload.len(), payload);
+        trace!("Send[0x{:X}] : {:?}", data.len(), data);
         let res = if self.is_bin {
-            self.client.send(Message::Binary(Vec::from(payload))).await
+            self.client.send(Message::Binary(Vec::from(data))).await
         } else {
-            let str_payload = std::str::from_utf8(payload).unwrap().to_owned();
+            let str_payload = std::str::from_utf8(data).unwrap().to_owned();
             trace!("Text('{}')", str_payload);
             self.client.send(Message::Text(str_payload)).await
         };
@@ -102,7 +101,7 @@ pub async fn connect(
 ) -> Result<(Box<dyn Transport + Send>, SerializerType), TransportError> {
     let mut request = Request::builder().uri(url.as_ref());
 
-    if config.get_agent().len() > 0 {
+    if !config.get_agent().is_empty() {
         request = request.header("User-Agent", config.get_agent());
     }
 
@@ -141,7 +140,7 @@ pub async fn connect(
         }
     };
 
-    let mut picked_serializer: SerializerType = SerializerType::Invalid;
+    let mut picked_serializer: Option<SerializerType> = None;
     for (key, value) in resp.headers().iter() {
         let val = match value.to_str() {
             Ok(v) => v,
@@ -149,16 +148,26 @@ pub async fn connect(
         };
         trace!("Header '{}' = '{}'", key.as_str(), val);
         if key.as_str().to_lowercase() == "sec-websocket-protocol" {
-            picked_serializer = SerializerType::from_str(val);
+            let header_se = match SerializerType::from_str(val) {
+                Ok(s) => s,
+                Err(e) => {
+                    //Hope that theres another serializer we support in the header
+                    warn!("{:?}", e);
+                    continue;
+                }
+            };
+            picked_serializer = Some(header_se);
             break;
         }
     }
 
-    match picked_serializer {
-        SerializerType::Invalid => {
-            return Err(TransportError::SerializerNotSupported(picked_serializer))
+    let picked_serializer = match picked_serializer {
+        Some(s) => s,
+        None => {
+            return Err(TransportError::SerializerNotSupported(
+                "<unknown>".to_string(),
+            ))
         }
-        _ => {}
     };
 
     Ok((

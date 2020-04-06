@@ -1,5 +1,4 @@
 use crate::core::*;
-use log::*;
 
 pub async fn subscribed(core: &mut Core, request: WampId, sub_id: WampId) -> Status {
     let res = match core.pending_sub.remove(&request) {
@@ -79,7 +78,10 @@ pub async fn event(
     };
 
     // Forward the event to the client
-    if let Err(_) = evt_queue.send((publication, arguments, arguments_kw)) {
+    if evt_queue
+        .send((publication, arguments, arguments_kw))
+        .is_err()
+    {
         warn!(
             "Client not listenning to subscription {} but did not unsubscribe...",
             subscription
@@ -152,15 +154,19 @@ pub async fn invocation(
     let func_future = rpc_func(arguments, arguments_kw);
 
     // Forward the event to the client
-    if let Err(_) = core.rpc_event_queue_w.send(Box::pin(async move {
-        match ctl_channel.send(Request::InvocationResult {
-            request: request,
-            res: func_future.await,
-        }) {
-            Ok(_) => Ok(()),
-            Err(_) => Err(From::from("Event loop has died !".to_string())),
-        }
-    })) {
+    if core
+        .rpc_event_queue_w
+        .send(Box::pin(async move {
+            match ctl_channel.send(Request::InvocationResult {
+                request,
+                res: func_future.await,
+            }) {
+                Ok(_) => Ok(()),
+                Err(_) => Err(From::from("Event loop has died !".to_string())),
+            }
+        }))
+        .is_err()
+    {
         warn!(
             "Client not listenning to rpc events but got invocation for rpc ID {}",
             registration
@@ -189,7 +195,7 @@ pub async fn call_result(
     };
 
     // Forward the event to the client
-    if let Err(_) = res.send(Ok((arguments, arguments_kw))) {
+    if res.send(Ok((arguments, arguments_kw))).is_err() {
         warn!("Client not waiting for call result id {}", request);
         // TODO : Should we be nice and send an UNSUBSCRIBE to the server ?
     }

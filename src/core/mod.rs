@@ -110,7 +110,7 @@ impl Core {
                 let host_port = match uri.port() {
                     Some(p) => p,
                     None => {
-                        return Err(From::from(format!("No port specified for tcp host")));
+                        return Err(From::from("No port specified for tcp host".to_string()));
                     }
                 };
 
@@ -118,7 +118,7 @@ impl Core {
                 tcp::connect(
                     uri.host_str().unwrap(),
                     host_port,
-                    !(uri.scheme() == "tcp"),
+                    uri.scheme() != "tcp",
                     &cfg,
                 )
                 .await?
@@ -131,7 +131,6 @@ impl Core {
         let serializer: Box<dyn SerializerImpl + Send> = match serializer_type {
             SerializerType::Json => Box::new(json::JsonSerializer {}),
             SerializerType::MsgPack => Box::new(msgpack::MsgPackSerializer {}),
-            _ => Box::new(json::JsonSerializer {}),
         };
 
         //let (rpc_result_w, rpc_result_r) = mpsc::unbounded_channel();
@@ -212,7 +211,7 @@ impl Core {
     async fn handle_peer_msg(&mut self, msg: Msg) -> Status {
         // Make sure we were expecting this message if it has a request ID
         if let Some(ref request) = msg.request_id() {
-            if self.pending_requests.remove(request) == false {
+            if !self.pending_requests.remove(request) {
                 warn!("Peer sent a response to an unknown request : {}", request);
                 return Status::Ok;
             }
