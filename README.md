@@ -1,14 +1,14 @@
 # wamp_async
 [![crates.io](https://img.shields.io/crates/v/wamp_async.svg)](https://crates.io/crates/wamp_async)
 [![mio](https://docs.rs/wamp_async/badge.svg)](https://docs.rs/wamp_async/)
-![Lines of Code](https://tokei.rs/b1/gitlab/elast0ny/wamp_async-rs)
+![Lines of Code](https://tokei.rs/b1/github/elast0ny/wamp_async)
 
 An asynchronous [WAMP](https://wamp-proto.org/) client implementation written in rust.
 
 ## Usage
 
 For usage examples, see :
-- [Publisher/Subscriber](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/pubsub.rs)
+- [Publisher/Subscriber](https://github.com/elast0ny/wamp_async/blob/master/examples/pubsub.rs)
 ```rust
 // Publish event with no arguments and with acknowledgment
 let ack_id = client.publish("peer.heartbeat", None, None, true).await?;
@@ -23,7 +23,7 @@ match event_queue.recv().await {
     None => println!("Event queue closed"),
 };
 ```
-- RPC [caller](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_caller.rs) & [callee](https://gitlab.com/elast0ny/wamp_async-rs/-/blob/master/examples/rpc_callee.rs)
+- RPC [caller](https://github.com/elast0ny/wamp_async/blob/master/examples/rpc_caller.rs) & [callee](https://github.com/elast0ny/wamp_async/blob/master/examples/rpc_callee.rs)
 ```rust
 // Call endpoint with one argument
 let (args, kwargs) = client.call("peer.echo", Some(vec![Arg::Integer(12)]), None).await?;

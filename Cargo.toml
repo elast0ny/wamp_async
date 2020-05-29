@@ -1,14 +1,14 @@
 [package]
 name = "wamp_async"
 description = "An asynchronous WAMP implementation"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["ElasT0ny <elast0ny00@gmail.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2018"
 
 readme = "README.md"
 documentation = "https://docs.rs/wamp_async"
-repository  = "https://gitlab.com/elast0ny/wamp_async-rs"
+repository  = "https://github.com/elast0ny/wamp_async"
 keywords = ["wamp", "async", "client"]
 categories = ["network-programming", "web-programming", "asynchronous"]
 
