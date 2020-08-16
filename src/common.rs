@@ -45,6 +45,8 @@ impl WampId {
 
 /// integer: a non-negative integer
 pub type WampInteger = usize;
+/// number: a floating-point number
+pub type WampNumber = f64;
 /// string: a Unicode string, including the empty string
 pub type WampString = String;
 /// bool: a boolean value (true or false)
@@ -68,6 +70,8 @@ pub enum Arg {
     Id(WampId),
     /// integer: a non-negative integer
     Integer(WampInteger),
+    /// number: a floating-point number
+    Number(WampNumber),
     /// string: a Unicode string, including the empty string
     String(WampString),
     /// bool: a boolean value (true or false)
