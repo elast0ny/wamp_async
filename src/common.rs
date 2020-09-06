@@ -5,10 +5,10 @@ use std::hash::Hash;
 use std::num::NonZeroU64;
 use std::pin::Pin;
 
-use crate::error::*;
-
 use log::*;
 use serde::{Deserialize, Serialize};
+
+use crate::error::*;
 
 pub(crate) const DEFAULT_AGENT_STR: &str =
     concat!(env!("CARGO_PKG_NAME"), "_rs-", env!("CARGO_PKG_VERSION"));
@@ -53,10 +53,15 @@ pub type WampBool = bool;
 pub type WampDict = HashMap<String, Arg>;
 /// list: a list (array) where items can be of any type
 pub type WampList = Vec<Arg>;
+/// Arbitrary values supported by the serialization format in the payload
+///
+/// Implementation note: we currently use `serde_json::Value`, which is
+/// suboptimal when you want to use MsgPack and pass binary data.
+pub type WampPayloadValue = serde_json::Value;
 /// Unnamed WAMP argument list
-pub type WampArgs = Option<WampList>;
+pub type WampArgs = Vec<WampPayloadValue>;
 /// Named WAMP argument map
-pub type WampKwArgs = Option<WampDict>;
+pub type WampKwArgs = HashMap<String, WampPayloadValue>;
 
 /// Generic enum that can hold any concrete WAMP value
 #[serde(untagged)]
@@ -120,6 +125,15 @@ impl ServerRole {
     }
 }
 
+/// Convert any serde-serializable object into WampPayloadValue
+pub fn try_into_any_value<T: Serialize>(value: T) -> Result<WampPayloadValue, WampError> {
+    serde_json::to_value(value).map_err(|e| {
+        WampError::SerializationError(crate::serializer::SerializerError::Deserialization(
+            e.to_string(),
+        ))
+    })
+}
+
 /// Returns whether a uri is valid or not (using strict rules)
 pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
     let uri: &str = in_uri.as_ref();
@@ -167,6 +181,6 @@ pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
 pub type GenericFuture = Pin<Box<dyn Future<Output = Result<(), WampError>> + Send>>;
 /// Type returned by RPC functions
 pub type RpcFuture =
-    Pin<Box<dyn Future<Output = Result<(WampArgs, WampKwArgs), WampError>> + Send>>;
+    Pin<Box<dyn Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>> + Send>>;
 /// Generic function that can receive RPC calls
-pub type RpcFunc = Box<dyn Fn(WampArgs, WampKwArgs) -> RpcFuture + Send + Sync>;
+pub type RpcFunc = Box<dyn Fn(Option<WampArgs>, Option<WampKwArgs>) -> RpcFuture + Send + Sync>;

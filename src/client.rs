@@ -366,8 +366,8 @@ impl Client {
     pub async fn publish<T: AsRef<str>>(
         &self,
         topic: T,
-        arguments: WampArgs,
-        arguments_kw: WampKwArgs,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
         acknowledge: bool,
     ) -> Result<Option<WampId>, WampError> {
         let mut options = WampDict::new();
@@ -414,8 +414,10 @@ impl Client {
     pub async fn register<T, F, Fut>(&self, uri: T, func_ptr: F) -> Result<WampId, WampError>
     where
         T: AsRef<str>,
-        F: Fn(WampArgs, WampKwArgs) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(WampArgs, WampKwArgs), WampError>> + Send + 'static,
+        F: Fn(Option<WampArgs>, Option<WampKwArgs>) -> Fut + Send + Sync + 'static,
+        Fut: Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>>
+            + Send
+            + 'static,
     {
         // Send the request
         let (res, result) = oneshot::channel();
@@ -473,9 +475,9 @@ impl Client {
     pub async fn call<T: AsRef<str>>(
         &self,
         uri: T,
-        arguments: WampArgs,
-        arguments_kw: WampKwArgs,
-    ) -> Result<(WampArgs, WampKwArgs), WampError> {
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
+    ) -> Result<(Option<WampArgs>, Option<WampKwArgs>), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Call {

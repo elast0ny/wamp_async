@@ -45,16 +45,16 @@ pub enum Msg {
         request: WampId,
         details: WampDict,
         error: WampUri,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// Sent by a Publisher to a Broker to publish an event.
     Publish {
         request: WampId,
         options: WampDict,
         topic: WampUri,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// Acknowledge sent by a Broker to a Publisher for acknowledged publications.
     Published {
@@ -84,23 +84,23 @@ pub enum Msg {
         subscription: WampId,
         publication: WampId,
         details: WampDict,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// Call as originally issued by the Caller to the Dealer.
     Call {
         request: WampId,
         options: WampDict,
         procedure: WampUri,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// Result of a call as returned by Dealer to Caller.
     Result {
         request: WampId,
         details: WampDict,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// A Callees request to register an endpoint at a Dealer.
     Register {
@@ -125,15 +125,15 @@ pub enum Msg {
         request: WampId,
         registration: WampId,
         details: WampDict,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
     /// Actual yield from an endpoint sent by a Callee to Dealer.
     Yield {
         request: WampId,
         options: WampDict,
-        arguments: Option<WampList>,
-        arguments_kw: Option<WampDict>,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
     },
 }
 

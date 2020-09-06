@@ -63,8 +63,8 @@ pub async fn event(
     subscription: WampId,
     publication: WampId,
     _details: WampDict,
-    arguments: Option<WampList>,
-    arguments_kw: Option<WampDict>,
+    arguments: Option<WampArgs>,
+    arguments_kw: Option<WampKwArgs>,
 ) -> Status {
     let evt_queue = match core.subscriptions.get(&subscription) {
         Some(e) => e,
@@ -153,8 +153,8 @@ pub async fn invocation(
     request: WampId,
     registration: WampId,
     _details: WampDict,
-    arguments: Option<WampList>,
-    arguments_kw: Option<WampDict>,
+    arguments: Option<WampArgs>,
+    arguments_kw: Option<WampKwArgs>,
 ) -> Status {
     let rpc_func = match core.rpc_endpoints.get(&registration) {
         Some(e) => e,
@@ -189,8 +189,8 @@ pub async fn call_result(
     core: &mut Core,
     request: WampId,
     _details: WampDict,
-    arguments: Option<WampList>,
-    arguments_kw: Option<WampDict>,
+    arguments: Option<WampArgs>,
+    arguments_kw: Option<WampKwArgs>,
 ) -> Status {
     let res = match core.pending_call.remove(&request) {
         Some(r) => r,
@@ -240,8 +240,8 @@ pub async fn error(
     request: WampId,
     details: WampDict,
     error: WampUri,
-    _arguments: Option<WampList>,
-    _arguments_kw: Option<WampDict>,
+    _arguments: Option<WampArgs>,
+    _arguments_kw: Option<WampKwArgs>,
 ) -> Status {
     let error = WampError::ServerError(error, details);
     match typ {

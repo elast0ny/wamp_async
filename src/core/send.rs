@@ -30,8 +30,8 @@ pub enum Request {
     Publish {
         uri: WampString,
         options: WampDict,
-        arguments: WampArgs,
-        arguments_kw: WampKwArgs,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
         res: Sender<Result<Option<WampId>, WampError>>,
     },
     Register {
@@ -45,13 +45,13 @@ pub enum Request {
     },
     InvocationResult {
         request: WampId,
-        res: Result<(WampArgs, WampKwArgs), WampError>,
+        res: Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>,
     },
     Call {
         uri: WampString,
         options: WampDict,
-        arguments: WampArgs,
-        arguments_kw: WampKwArgs,
+        arguments: Option<WampArgs>,
+        arguments_kw: Option<WampKwArgs>,
         res: PendingCallResult,
     },
 }
@@ -196,8 +196,8 @@ pub async fn publish(
     core: &mut Core,
     uri: WampString,
     options: WampDict,
-    arguments: WampArgs,
-    arguments_kw: WampKwArgs,
+    arguments: Option<WampArgs>,
+    arguments_kw: Option<WampKwArgs>,
     res: Sender<Result<Option<WampId>, WampError>>,
 ) -> Status {
     let request = core.create_request();
@@ -285,7 +285,7 @@ pub async fn unregister(
 pub async fn invoke_yield(
     core: &mut Core,
     request: WampId,
-    res: Result<(WampArgs, WampKwArgs), WampError>,
+    res: Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>,
 ) -> Status {
     let msg: Msg = match res {
         Ok((arguments, arguments_kw)) => Msg::Yield {
@@ -299,7 +299,7 @@ pub async fn invoke_yield(
             request,
             details: WampDict::new(),
             error: "wamp.async.rs.rpc.failed".to_string(),
-            arguments: Some(vec![Arg::String(format!("{:?}", e))]),
+            arguments: Some(vec![format!("{:?}", e).into()]),
             arguments_kw: None,
         },
     };
@@ -314,8 +314,8 @@ pub async fn call(
     core: &mut Core,
     uri: WampString,
     options: WampDict,
-    arguments: WampArgs,
-    arguments_kw: WampKwArgs,
+    arguments: Option<WampArgs>,
+    arguments_kw: Option<WampKwArgs>,
     res: PendingCallResult,
 ) -> Status {
     let request = core.create_request();

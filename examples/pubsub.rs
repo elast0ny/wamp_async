@@ -7,7 +7,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // Connect to the server
     let (mut client, (evt_loop, _rpc_evt_queue)) = Client::connect(
-        "tcps://localhost:8081",
+        "wss://localhost:8080/ws",
         Some(ClientConfig::default().set_ssl_verify(false)),
     )
     .await?;
