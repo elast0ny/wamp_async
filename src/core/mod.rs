@@ -33,9 +33,9 @@ pub type JoinResult = Sender<
     >,
 >;
 pub type SubscriptionQueue = UnboundedReceiver<(
-    WampId,   // Publish event ID
-    WampArgs, // Publish args
-    WampKwArgs,
+    WampId,           // Publish event ID
+    Option<WampArgs>, // Publish args
+    Option<WampKwArgs>,
 )>; // publish kwargs
 pub type PendingSubResult = Sender<
     Result<
@@ -55,8 +55,8 @@ pub type PendingRegisterResult = Sender<
 pub type PendingCallResult = Sender<
     Result<
         (
-            WampArgs,   // Return args
-            WampKwArgs, // Return kwargs
+            Option<WampArgs>,   // Return args
+            Option<WampKwArgs>, // Return kwargs
         ),
         WampError,
     >,
@@ -82,7 +82,7 @@ pub struct Core {
     /// Pending subscription requests sent to the server
     pending_sub: HashMap<WampId, PendingSubResult>,
     /// Current subscriptions
-    subscriptions: HashMap<WampId, UnboundedSender<(WampId, WampArgs, WampKwArgs)>>,
+    subscriptions: HashMap<WampId, UnboundedSender<(WampId, Option<WampArgs>, Option<WampKwArgs>)>>,
 
     /// Pending RPC registration requests sent to the server
     pending_register: HashMap<WampId, (RpcFunc, PendingRegisterResult)>,

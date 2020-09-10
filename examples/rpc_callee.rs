@@ -8,11 +8,14 @@ use wamp_async::{
 };
 
 lazy_static! {
-    static ref RPC_CALL_COUNT: AtomicU64 = { AtomicU64::new(0) };
+    static ref RPC_CALL_COUNT: AtomicU64 = AtomicU64::new(0);
 }
 
 // Simply return the rpc arguments
-async fn echo(args: WampArgs, kwargs: WampKwArgs) -> Result<(WampArgs, WampKwArgs), WampError> {
+async fn echo(
+    args: Option<WampArgs>,
+    kwargs: Option<WampKwArgs>,
+) -> Result<(Option<WampArgs>, Option<WampKwArgs>), WampError> {
     println!("peer.echo {:?} {:?}", args, kwargs);
     let _ = RPC_CALL_COUNT.fetch_add(1, Ordering::Relaxed);
     Ok((args, kwargs))
@@ -60,10 +63,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // Register our function to a uri
     let rpc_id = client.register("peer.echo", echo).await?;
 
-    println!("Waiting for 'peer.echo' to be called at least 5 times");
+    println!("Waiting for 'peer.echo' to be called at least 4 times");
     loop {
         let call_num = RPC_CALL_COUNT.load(Ordering::Relaxed);
-        if call_num >= 5 || !client.is_connected() {
+        if call_num >= 4 || !client.is_connected() {
             break;
         }
         tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
