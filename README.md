@@ -15,6 +15,7 @@ For usage examples, see :
     let ack_id = client.publish("peer.heartbeat", None, None, true).await?;
     println!("Ack id {}", ack_id.unwrap());
     ```
+
     ```rust
     // Register for events
     let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat").await?;
@@ -31,6 +32,7 @@ For usage examples, see :
     let (args, kwargs) = client.call("peer.echo", Some(vec![12.into()]), None).await?;
     println!("RPC returned {:?} {:?}", args, kwargs);
     ```
+
     ```rust
     // Declare your RPC function
     async fn rpc_echo(args: Option<WampArgs>, kwargs: Option<WampKwArgs>) -> Result<(Option<WampArgs>, Option<WampKwArgs>), WampError> {
@@ -41,6 +43,53 @@ For usage examples, see :
     // Register the function
     let rpc_id = client.register("peer.echo", rpc_echo).await?;
     ```
+
+
+## Structs Serialization and Deserialization
+
+```rust
+// Call endpoint with one argument
+let (args, kwargs) = client.call("peer.echo", Some(vec![12.into()]), None).await?;
+// or
+let (args, kwargs) = client.call("peer.echo", Some(wamp_async::try_into_args((12,))), None).await?;
+println!("RPC returned {:?} {:?}", args, kwargs);
+```
+
+```rust
+#[derive(serde::Deserialize, serde::Serialize)]
+struct MyKwArgs {
+    name: String,
+}
+
+// Declare your RPC function
+async fn rpc_echo(args: Option<WampArgs>, kwargs: Option<WampKwArgs>) -> Result<(Option<WampArgs>, Option<WampKwArgs>), WampError> {
+    // You only need serde-deserializable structure (e.g. a tuple of two integers)
+    let valid_args: (i32, i32) = if let Some(args) = args {
+        wamp_async::try_from_args(args)?
+    } else {
+        return Err(wamp_async::WampError::UnknownError("positional args are required".to_string()));
+    };
+    println!("Two integers are: {}, {}", valid_args.0, valid_args.1);
+
+    // You can also use a custom struct and use a little bit of Rust helpers
+    let valid_kwargs: Option<MyKwArgs> = kwargs.map(wamp_async::try_from_kwargs).transpose()?;
+
+    if let Some(MyKwArgs { name }) = valid_kwargs {
+        println!("Name is {}", name);
+    } else {
+        println!("There were no kwargs specified");
+    }
+
+    Ok((
+        Some(wamp_async::try_into_args(valid_args)?),
+        valid_kwargs.map(wamp_async::try_into_kwargs).transpose()?,
+    ))
+}
+
+// Register the function
+let rpc_id = client.register("peer.echo", rpc_echo).await?;
+```
+
 
 ## Features
 
