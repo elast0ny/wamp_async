@@ -116,7 +116,7 @@ impl ClientConfig {
 }
 
 /// Allows interaction as a client with a WAMP server
-pub struct Client {
+pub struct Client<'a> {
     /// Configuration struct used to customize the client
     config: ClientConfig,
     /// Generic transport
@@ -127,7 +127,7 @@ pub struct Client {
     /// Current Session ID
     session_id: Option<WampId>,
     /// Channel to send requests to the event loop
-    ctl_channel: UnboundedSender<Request>,
+    ctl_channel: UnboundedSender<Request<'a>>,
 }
 
 /// All the states a client can be in
@@ -140,7 +140,7 @@ pub enum ClientState {
     Disconnected(Result<(), WampError>),
 }
 
-impl Client {
+impl<'a> Client<'a> {
     /// Connects to a WAMP server using the specified protocol
     ///
     /// __Note__
@@ -156,8 +156,11 @@ impl Client {
         cfg: Option<ClientConfig>,
     ) -> Result<
         (
-            Self,
-            (GenericFuture, Option<UnboundedReceiver<GenericFuture>>),
+            Client<'a>,
+            (
+                GenericFuture<'a>,
+                Option<UnboundedReceiver<GenericFuture<'a>>>,
+            ),
         ),
         WampError,
     > {
@@ -414,10 +417,8 @@ impl Client {
     pub async fn register<T, F, Fut>(&self, uri: T, func_ptr: F) -> Result<WampId, WampError>
     where
         T: AsRef<str>,
-        F: Fn(Option<WampArgs>, Option<WampKwArgs>) -> Fut + Send + Sync + 'static,
-        Fut: Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>>
-            + Send
-            + 'static,
+        F: Fn(Option<WampArgs>, Option<WampKwArgs>) -> Fut + Send + Sync + 'a,
+        Fut: Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>> + Send + 'a,
     {
         // Send the request
         let (res, result) = oneshot::channel();

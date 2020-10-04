@@ -1,6 +1,6 @@
 use crate::core::*;
 
-pub async fn subscribed(core: &mut Core, request: WampId, sub_id: WampId) -> Status {
+pub async fn subscribed(core: &mut Core<'_>, request: WampId, sub_id: WampId) -> Status {
     let res = match core.pending_sub.remove(&request) {
         Some(v) => v,
         None => {
@@ -26,7 +26,7 @@ pub async fn subscribed(core: &mut Core, request: WampId, sub_id: WampId) -> Sta
 
     Status::Ok
 }
-pub async fn unsubscribed(core: &mut Core, request: WampId) -> Status {
+pub async fn unsubscribed(core: &mut Core<'_>, request: WampId) -> Status {
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v,
         None => {
@@ -43,7 +43,7 @@ pub async fn unsubscribed(core: &mut Core, request: WampId) -> Status {
 
     Status::Ok
 }
-pub async fn published(core: &mut Core, request: WampId, pub_id: WampId) -> Status {
+pub async fn published(core: &mut Core<'_>, request: WampId, pub_id: WampId) -> Status {
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v,
         None => {
@@ -59,7 +59,7 @@ pub async fn published(core: &mut Core, request: WampId, pub_id: WampId) -> Stat
     Status::Ok
 }
 pub async fn event(
-    core: &mut Core,
+    core: &mut Core<'_>,
     subscription: WampId,
     publication: WampId,
     _details: WampDict,
@@ -91,7 +91,7 @@ pub async fn event(
 
     Status::Ok
 }
-pub async fn registered(core: &mut Core, request: WampId, rpc_id: WampId) -> Status {
+pub async fn registered(core: &mut Core<'_>, request: WampId, rpc_id: WampId) -> Status {
     let (rpc_func, res) = match core.pending_register.remove(&request) {
         Some(v) => v,
         None => {
@@ -117,7 +117,7 @@ pub async fn registered(core: &mut Core, request: WampId, rpc_id: WampId) -> Sta
 
     Status::Ok
 }
-pub async fn unregisterd(core: &mut Core, request: WampId) -> Status {
+pub async fn unregisterd(core: &mut Core<'_>, request: WampId) -> Status {
     let res = match core.pending_transactions.remove(&request) {
         Some(v) => v,
         None => {
@@ -134,9 +134,9 @@ pub async fn unregisterd(core: &mut Core, request: WampId) -> Status {
 
 /// Runs the RPC function and forwards the result
 async fn rpc_func_runner(
-    ctl_channel: UnboundedSender<Request>,
+    ctl_channel: UnboundedSender<Request<'_>>,
     request: WampId,
-    rpc_func: RpcFuture,
+    rpc_func: RpcFuture<'_>,
 ) -> Result<(), WampError> {
     // Run the RPC func
     let res = rpc_func.await;
@@ -149,7 +149,7 @@ async fn rpc_func_runner(
 }
 
 pub async fn invocation(
-    core: &mut Core,
+    core: &mut Core<'_>,
     request: WampId,
     registration: WampId,
     _details: WampDict,
@@ -186,7 +186,7 @@ pub async fn invocation(
     Status::Ok
 }
 pub async fn call_result(
-    core: &mut Core,
+    core: &mut Core<'_>,
     request: WampId,
     _details: WampDict,
     arguments: Option<WampArgs>,
@@ -212,7 +212,7 @@ pub async fn call_result(
     Status::Ok
 }
 
-pub async fn goodbye(core: &mut Core, details: WampDict, reason: WampString) -> Status {
+pub async fn goodbye(core: &mut Core<'_>, details: WampDict, reason: WampString) -> Status {
     debug!("Server sent goodbye : {:?} {:?}", details, reason);
 
     if !core.valid_session && reason == "wamp.close.goodbye_and_out" {
@@ -229,13 +229,13 @@ pub async fn goodbye(core: &mut Core, details: WampDict, reason: WampString) -> 
     }
 }
 
-pub async fn abort(_core: &mut Core, details: WampDict, reason: WampString) -> Status {
+pub async fn abort(_core: &mut Core<'_>, details: WampDict, reason: WampString) -> Status {
     error!("Server sent abort : {:?} {:?}", details, reason);
     Status::Shutdown
 }
 // Handles an error sent by the peer
 pub async fn error(
-    core: &mut Core,
+    core: &mut Core<'_>,
     typ: WampInteger,
     request: WampId,
     details: WampDict,
