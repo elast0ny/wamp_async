@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 use std::pin::Pin;
 
 use log::*;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::error::*;
 
@@ -61,7 +61,7 @@ pub type WampPayloadValue = serde_json::Value;
 /// Unnamed WAMP argument list
 pub type WampArgs = Vec<WampPayloadValue>;
 /// Named WAMP argument map
-pub type WampKwArgs = HashMap<String, WampPayloadValue>;
+pub type WampKwArgs = serde_json::Map<String, WampPayloadValue>;
 
 /// Generic enum that can hold any concrete WAMP value
 #[serde(untagged)]
@@ -125,13 +125,60 @@ impl ServerRole {
     }
 }
 
-/// Convert any serde-serializable object into WampPayloadValue
-pub fn try_into_any_value<T: Serialize>(value: T) -> Result<WampPayloadValue, WampError> {
-    serde_json::to_value(value).map_err(|e| {
+/// Convert WampPayloadValue into any serde-deserializable object
+pub fn try_from_any_value<'a, T: DeserializeOwned>(
+    value: WampPayloadValue,
+) -> Result<T, WampError> {
+    serde_json::from_value(value).map_err(|e| {
         WampError::SerializationError(crate::serializer::SerializerError::Deserialization(
             e.to_string(),
         ))
     })
+}
+
+/// Convert WampArgs into any serde-deserializable object
+pub fn try_from_args<'a, T: DeserializeOwned>(value: WampArgs) -> Result<T, WampError> {
+    try_from_any_value(value.into())
+}
+
+/// Convert WampArgs into any serde-deserializable object
+pub fn try_from_kwargs<'a, T: DeserializeOwned>(value: WampKwArgs) -> Result<T, WampError> {
+    try_from_any_value(value.into())
+}
+
+/// Convert any serde-serializable object into WampPayloadValue
+pub fn try_into_any_value<T: Serialize>(value: T) -> Result<WampPayloadValue, WampError> {
+    serde_json::to_value(value).map_err(|e| {
+        WampError::SerializationError(crate::serializer::SerializerError::Serialization(
+            e.to_string(),
+        ))
+    })
+}
+
+/// Convert any serde-serializable object into WampArgs
+pub fn try_into_args<T: Serialize>(value: T) -> Result<WampArgs, WampError> {
+    match serde_json::to_value(value).unwrap() {
+        serde_json::value::Value::Array(array) => Ok(array),
+        value => Err(WampError::SerializationError(
+            crate::serializer::SerializerError::Serialization(format!(
+                "failed to serialize {:?} into positional arguments",
+                value
+            )),
+        )),
+    }
+}
+
+/// Convert any serde-serializable object into WampKwArgs
+pub fn try_into_kwargs<T: Serialize>(value: T) -> Result<WampKwArgs, WampError> {
+    match serde_json::to_value(value).unwrap() {
+        serde_json::value::Value::Object(object) => Ok(object),
+        value => Err(WampError::SerializationError(
+            crate::serializer::SerializerError::Serialization(format!(
+                "failed to serialize {:?} into keyword arguments",
+                value
+            )),
+        )),
+    }
 }
 
 /// Returns whether a uri is valid or not (using strict rules)
