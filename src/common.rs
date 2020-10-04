@@ -178,9 +178,15 @@ pub fn is_valid_strict_uri<T: AsRef<str>>(in_uri: T) -> bool {
 }
 
 /// Future that can return success or an error
-pub type GenericFuture = Pin<Box<dyn Future<Output = Result<(), WampError>> + Send>>;
+pub type GenericFuture<'a> = Pin<Box<dyn Future<Output = Result<(), WampError>> + Send + 'a>>;
 /// Type returned by RPC functions
-pub type RpcFuture =
-    Pin<Box<dyn Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>> + Send>>;
+pub type RpcFuture<'a> = std::pin::Pin<
+    Box<
+        dyn std::future::Future<Output = Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>>
+            + Send
+            + 'a,
+    >,
+>;
 /// Generic function that can receive RPC calls
-pub type RpcFunc = Box<dyn Fn(Option<WampArgs>, Option<WampKwArgs>) -> RpcFuture + Send + Sync>;
+pub type RpcFunc<'a> =
+    Box<dyn Fn(Option<WampArgs>, Option<WampKwArgs>) -> RpcFuture<'a> + Send + Sync + 'a>;

@@ -8,7 +8,7 @@ use crate::core::*;
 use crate::message::*;
 
 pub type JoinRealmResult = Result<(WampId, HashMap<WampString, Arg>), WampError>;
-pub enum Request {
+pub enum Request<'a> {
     Shutdown,
     Join {
         uri: WampString,
@@ -37,7 +37,7 @@ pub enum Request {
     Register {
         uri: WampString,
         res: PendingRegisterResult,
-        func_ptr: RpcFunc,
+        func_ptr: RpcFunc<'a>,
     },
     Unregister {
         rpc_id: WampId,
@@ -58,7 +58,7 @@ pub enum Request {
 
 /// Handler for any join realm request. This will send a HELLO and wait for the WELCOME response
 pub async fn join_realm(
-    core: &mut Core,
+    core: &mut Core<'_>,
     uri: WampString,
     roles: HashSet<ClientRole>,
     mut agent_str: Option<WampString>,
@@ -117,7 +117,7 @@ pub async fn join_realm(
 }
 
 /// Handler for any leave realm request. This function will send a GOODBYE and wait for a GOODBYE response
-pub async fn leave_realm(core: &mut Core, res: Sender<Result<(), WampError>>) -> Status {
+pub async fn leave_realm(core: &mut Core<'_>, res: Sender<Result<(), WampError>>) -> Status {
     core.valid_session = false;
 
     if let Err(e) = core
@@ -136,7 +136,7 @@ pub async fn leave_realm(core: &mut Core, res: Sender<Result<(), WampError>>) ->
     Status::Ok
 }
 
-pub async fn subscribe(core: &mut Core, topic: WampString, res: PendingSubResult) -> Status {
+pub async fn subscribe(core: &mut Core<'_>, topic: WampString, res: PendingSubResult) -> Status {
     let request = core.create_request();
 
     if let Err(e) = core
@@ -158,7 +158,7 @@ pub async fn subscribe(core: &mut Core, topic: WampString, res: PendingSubResult
 }
 
 pub async fn unsubscribe(
-    core: &mut Core,
+    core: &mut Core<'_>,
     sub_id: WampId,
     res: Sender<Result<Option<WampId>, WampError>>,
 ) -> Status {
@@ -193,7 +193,7 @@ pub async fn unsubscribe(
 }
 
 pub async fn publish(
-    core: &mut Core,
+    core: &mut Core<'_>,
     uri: WampString,
     options: WampDict,
     arguments: Option<WampArgs>,
@@ -222,11 +222,11 @@ pub async fn publish(
     Status::Ok
 }
 
-pub async fn register(
-    core: &mut Core,
+pub async fn register<'a>(
+    core: &mut Core<'a>,
     uri: WampString,
     res: PendingRegisterResult,
-    func_ptr: RpcFunc,
+    func_ptr: RpcFunc<'a>,
 ) -> Status {
     let request = core.create_request();
 
@@ -248,7 +248,7 @@ pub async fn register(
 }
 
 pub async fn unregister(
-    core: &mut Core,
+    core: &mut Core<'_>,
     rpc_id: WampId,
     res: Sender<Result<Option<WampId>, WampError>>,
 ) -> Status {
@@ -283,7 +283,7 @@ pub async fn unregister(
 }
 
 pub async fn invoke_yield(
-    core: &mut Core,
+    core: &mut Core<'_>,
     request: WampId,
     res: Result<(Option<WampArgs>, Option<WampKwArgs>), WampError>,
 ) -> Status {
@@ -311,7 +311,7 @@ pub async fn invoke_yield(
 }
 
 pub async fn call(
-    core: &mut Core,
+    core: &mut Core<'_>,
     uri: WampString,
     options: WampDict,
     arguments: Option<WampArgs>,
