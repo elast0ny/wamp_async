@@ -16,7 +16,7 @@ use crate::transport::{Transport, TransportError};
 
 struct WsCtx {
     is_bin: bool,
-    client: WebSocketStream<Stream<TcpStream, tokio_tls::TlsStream<TcpStream>>>,
+    client: WebSocketStream<Stream<TcpStream, tokio_native_tls::TlsStream<TcpStream>>>,
 }
 
 #[async_trait]

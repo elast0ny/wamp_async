@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use native_tls::TlsConnector;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
-use tokio_tls;
+use tokio_native_tls;
 
 use crate::serializer::SerializerType;
 use crate::transport::{Transport, TransportError};
@@ -203,13 +203,13 @@ impl MsgPrefix {
 
 enum SockWrapper {
     Plain(TcpStream),
-    Tls(Box<tokio_tls::TlsStream<TcpStream>>),
+    Tls(Box<tokio_native_tls::TlsStream<TcpStream>>),
 }
 impl SockWrapper {
     pub fn close(&mut self) {
         let sock = match self {
             SockWrapper::Plain(ref mut s) => s,
-            SockWrapper::Tls(s) => s.get_mut(),
+            SockWrapper::Tls(s) => s.get_mut().get_mut().get_mut(),
         };
 
         match sock.shutdown() {
@@ -387,7 +387,7 @@ pub async fn connect_tls(
     host_url: &str,
     host_port: u16,
     cfg: &ClientConfig,
-) -> Result<tokio_tls::TlsStream<TcpStream>, TransportError> {
+) -> Result<tokio_native_tls::TlsStream<TcpStream>, TransportError> {
     let stream = connect_raw(host_url, host_port).await?;
     let mut tls_cfg = TlsConnector::builder();
 
@@ -402,7 +402,7 @@ pub async fn connect_tls(
             return Err(TransportError::ConnectionFailed);
         }
     };
-    let cx = tokio_tls::TlsConnector::from(cx);
+    let cx = tokio_native_tls::TlsConnector::from(cx);
     match cx.connect(host_url, stream).await {
         Ok(s) => Ok(s),
         Err(e) => {
