@@ -90,7 +90,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .await?;
 
-    tokio::time::delay_for(std::time::Duration::from_secs(10 * 60)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(10 * 60)).await;
 
     Ok(())
 }

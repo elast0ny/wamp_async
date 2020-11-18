@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         };
 
         println!();
-        tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
     println!("Leaving realm");

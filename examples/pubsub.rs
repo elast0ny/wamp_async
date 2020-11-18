@@ -37,7 +37,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             if cur_event_num >= max_events {
                 break;
             }
-            tokio::time::delay_for(std::time::Duration::from_secs(1)).await
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await
         }
     // Start as a subscriber
     } else {
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     println!("Leaving realm");
     client.leave_realm().await?;
 
-    tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     client.disconnect().await;
     Ok(())
 }
