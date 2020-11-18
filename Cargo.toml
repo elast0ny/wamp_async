@@ -1,33 +1,33 @@
 [package]
-name = "wamp_async"
-description = "An asynchronous WAMP implementation"
-version = "0.2.0"
 authors = ["ElasT0ny <elast0ny00@gmail.com>"]
-license = "MIT OR Apache-2.0"
+description = "An asynchronous WAMP implementation"
 edition = "2018"
+license = "MIT OR Apache-2.0"
+name = "wamp_async"
+version = "0.2.0"
 
-readme = "README.md"
-documentation = "https://docs.rs/wamp_async"
-repository  = "https://github.com/elast0ny/wamp_async"
-keywords = ["wamp", "async", "client"]
 categories = ["network-programming", "web-programming", "asynchronous"]
+documentation = "https://docs.rs/wamp_async"
+keywords = ["wamp", "async", "client"]
+readme = "README.md"
+repository = "https://github.com/elast0ny/wamp_async"
 
 [dependencies]
-log = "0.4"
-env_logger = "0.7"
-quick-error = "1.2"
-url = "2.1"
 async-trait = "0.1"
-tokio = { version = "0.2", features = ["net", "io-util", "sync", "macros"] }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-rmp-serde = "0.14"
-rand = "0.3"
-tokio-tungstenite = {version = "0.11", features = ["tls"]}
-native-tls = "0.2"
-tokio-tls = "0.3"
+env_logger = "0.7"
 futures = "0"
+log = "0.4"
+native-tls = "0.2"
+quick-error = "1.2"
+rand = "0.3"
+rmp-serde = "0.14"
+serde = {version = "1.0", features = ["derive"]}
+serde_json = "1.0"
+tokio = {version = "0.3", features = ["net", "sync", "io-util", "macros"]}
+tokio-native-tls = "0.2"
+tokio-tungstenite = {version = "0.12", features = ["tls"]}
+url = "2.1"
 
 [dev-dependencies]
-tokio = { version = "0.2", features = ["macros", "rt-core", "time"] }
 lazy_static = "1"
+tokio = {version = "0.3", features = ["full"]}

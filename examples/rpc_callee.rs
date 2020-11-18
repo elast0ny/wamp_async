@@ -98,7 +98,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if call_num >= 4 || !client.is_connected() {
             break;
         }
-        tokio::time::delay_for(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 
     // Client should not have disconnected
