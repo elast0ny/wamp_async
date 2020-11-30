@@ -10,6 +10,8 @@ use crate::common::*;
 pub const HELLO_ID: WampInteger = 1;
 pub const WELCOME_ID: WampInteger = 2;
 pub const ABORT_ID: WampInteger = 3;
+pub const CHALLENGE_ID: WampInteger = 4;
+pub const AUTHENTICATE_ID: WampInteger = 5;
 pub const GOODBYE_ID: WampInteger = 6;
 pub const ERROR_ID: WampInteger = 8;
 pub const PUBLISH_ID: WampInteger = 16;
@@ -35,8 +37,18 @@ pub enum Msg {
     Hello { realm: WampUri, details: WampDict },
     /// Sent by a Router to accept a Client. The WAMP session is now open.
     Welcome { session: WampId, details: WampDict },
-    /// Sent by a Peer*to abort the opening of a WAMP session. No response is expected.
+    /// Sent by a Peer to abort the opening of a WAMP session. No response is expected.
     Abort { details: WampDict, reason: WampUri },
+    /// Sent by a Router to challenge a Client for authentication. Authenticate response is expected
+    Challenge {
+        authentication_method: AuthenticationMethod,
+        extra: WampDict,
+    },
+    /// Sent by a Peer to authenticate a Client in response to Challenge request from Router.
+    Authenticate {
+        signature: WampString,
+        extra: WampDict,
+    },
     /// Sent by a Peer to close a previously opened WAMP session. Must be echo'ed by the receiving Peer.
     Goodbye { details: WampDict, reason: WampUri },
     /// Error reply sent by a Peer as an error response to different kinds of requests.
@@ -157,6 +169,8 @@ impl Msg {
             Msg::Hello { .. }
             | Msg::Welcome { .. }
             | Msg::Abort { .. }
+            | Msg::Challenge { .. }
+            | Msg::Authenticate { .. }
             | Msg::Goodbye { .. }
             | Msg::Event { .. }
             | Msg::Invocation { .. } => return None,
@@ -187,6 +201,14 @@ impl Serialize for Msg {
                 ref details,
                 ref reason,
             } => (ABORT_ID, details, reason).serialize(serializer),
+            Msg::Challenge {
+                ref authentication_method,
+                ref extra,
+            } => (CHALLENGE_ID, authentication_method, extra).serialize(serializer),
+            Msg::Authenticate {
+                ref signature,
+                ref extra,
+            } => (AUTHENTICATE_ID, signature, extra).serialize(serializer),
             Msg::Goodbye {
                 ref details,
                 ref reason,
@@ -401,6 +423,26 @@ impl<'de> Deserialize<'de> for Msg {
                     reason: v
                         .next_element()?
                         .ok_or_else(|| Error::missing_field("reason"))?,
+                })
+            }
+            fn de_challenge<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
+                Ok(Msg::Challenge {
+                    authentication_method: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("authmethod"))?,
+                    extra: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("extra"))?,
+                })
+            }
+            fn de_authenticate<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
+                Ok(Msg::Authenticate {
+                    signature: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("signature"))?,
+                    extra: v
+                        .next_element()?
+                        .ok_or_else(|| Error::missing_field("extra"))?,
                 })
             }
             fn de_goodbye<'de, V: SeqAccess<'de>>(&self, mut v: V) -> Result<Msg, V::Error> {
@@ -625,6 +667,8 @@ impl<'de> Deserialize<'de> for Msg {
                     HELLO_ID => self.de_hello(v),
                     WELCOME_ID => self.de_welcome(v),
                     ABORT_ID => self.de_abort(v),
+                    CHALLENGE_ID => self.de_challenge(v),
+                    AUTHENTICATE_ID => self.de_authenticate(v),
                     GOODBYE_ID => self.de_goodbye(v),
                     ERROR_ID => self.de_error(v),
                     PUBLISH_ID => self.de_publish(v),

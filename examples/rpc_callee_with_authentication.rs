@@ -88,8 +88,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    println!("Joining realm");
-    client.join_realm("realm1").await?;
+    println!("Joining realm1 with Ticket principal name 'username' and secret 'password'");
+    client
+        .join_realm_with_authentication(
+            "realm1",
+            vec![wamp_async::AuthenticationMethod::Ticket],
+            "username",
+            |_authentication_method, _extra| async {
+                Ok(wamp_async::AuthenticationChallengeResponse::with_signature(
+                    "password".into(),
+                ))
+            },
+        )
+        .await?;
 
     // Register our functions to a uri
     let echo_rpc_id = client.register("peer.echo", echo).await?;

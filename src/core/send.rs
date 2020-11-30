@@ -14,6 +14,9 @@ pub enum Request<'a> {
         uri: WampString,
         roles: HashSet<ClientRole>,
         agent_str: Option<WampString>,
+        authentication_methods: Vec<AuthenticationMethod>,
+        authentication_id: Option<WampString>,
+        on_challenge_handler: Option<AuthenticationChallengeHandler<'a>>,
         res: Sender<JoinRealmResult>,
     },
     Leave {
@@ -61,7 +64,10 @@ pub async fn join_realm(
     core: &mut Core<'_>,
     uri: WampString,
     roles: HashSet<ClientRole>,
-    mut agent_str: Option<WampString>,
+    agent_str: Option<WampString>,
+    authentication_methods: Vec<AuthenticationMethod>,
+    authid: Option<WampString>,
+    on_challenge_handler: Option<AuthenticationChallengeHandler<'_>>,
     res: JoinResult,
 ) -> Status {
     let mut details: WampDict = WampDict::new();
@@ -72,8 +78,26 @@ pub async fn join_realm(
     }
     details.insert("roles".to_owned(), Arg::Dict(client_roles));
 
-    if let Some(agent) = agent_str.take() {
+    if let Some(agent) = agent_str {
         details.insert("agent".to_owned(), Arg::String(agent));
+    }
+
+    if !authentication_methods.is_empty() {
+        details.insert(
+            "authmethods".to_owned(),
+            Arg::List(
+                authentication_methods
+                    .iter()
+                    .map(|authentication_method| {
+                        Arg::String(authentication_method.as_ref().to_owned())
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+        );
+    }
+
+    if let Some(authid) = authid {
+        details.insert("authid".to_owned(), Arg::String(authid));
     }
 
     // Send hello with our info
@@ -88,24 +112,51 @@ pub async fn join_realm(
         return Status::Shutdown;
     }
 
-    // Receive the WELCOME message
-    let resp = match core.recv().await {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = res.send(Err(e));
-            return Status::Shutdown;
-        }
-    };
-
     // Make sure the server responded with the proper message
-    let (session_id, server_roles) = match resp {
-        Msg::Welcome { session, details } => (session, details),
-        m => {
-            let _ = res.send(Err(From::from(format!(
-                "Server did not respond with WELCOME : {:?}",
-                m
-            ))));
-            return Status::Shutdown;
+    let (session_id, server_roles) = loop {
+        // Receive the response to the HELLO message (either WELCOME or CHALLENGE are expected)
+        let resp = match core.recv().await {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = res.send(Err(e));
+                return Status::Shutdown;
+            }
+        };
+
+        match resp {
+            Msg::Welcome { session, details } => break (session, details),
+            Msg::Challenge {
+                authentication_method,
+                extra,
+            } => {
+                if let Some(ref on_challenge_handler) = on_challenge_handler {
+                    match on_challenge_handler(authentication_method, extra).await {
+                        Ok(AuthenticationChallengeResponse { signature, extra }) => {
+                            if let Err(e) = core.send(&Msg::Authenticate { signature, extra }).await
+                            {
+                                let _ = res.send(Err(e));
+                                return Status::Shutdown;
+                            }
+                        }
+                        Err(e) => {
+                            let _ = res.send(Err(e));
+                            return Status::Shutdown;
+                        }
+                    }
+                } else {
+                    let _ = res.send(Err(From::from(
+                        "Server requested a CHALLENGE to authenticate, but there was no challenge handler provided".to_string()
+                    )));
+                    return Status::Shutdown;
+                }
+            }
+            m => {
+                let _ = res.send(Err(From::from(format!(
+                    "Server did not respond with WELCOME : {:?}",
+                    m
+                ))));
+                return Status::Shutdown;
+            }
         }
     };
 
