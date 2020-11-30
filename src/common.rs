@@ -4,6 +4,7 @@ use std::future::Future;
 use std::hash::Hash;
 use std::num::NonZeroU64;
 use std::pin::Pin;
+use std::str::FromStr;
 
 use log::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -125,6 +126,75 @@ impl ServerRole {
     }
 }
 
+/// All the supported authentication methods WAMP-proto defines.
+///
+/// There is no special support currently built into wamp-async-rs, so
+/// "on challenge handler" will receive the raw challenge data as is, and
+/// it is required to reply with the correct [`AuthenticationChallengeResponse`].
+#[derive(Debug, Clone, strum::AsRefStr, strum::EnumString)]
+pub enum AuthenticationMethod {
+    /// No authentication challenge
+    #[strum(serialize = "anonymous")]
+    Anonymous,
+    /// [Challenge Response Authentication]
+    ///
+    /// [Challenge Response Authentication]: https://wamp-proto.org/_static/gen/wamp_latest.html#wampcra
+    #[strum(serialize = "wampcra")]
+    WampCra,
+    /// [Ticket-based Authentication]
+    ///
+    /// [Ticket-based Authentication]: https://wamp-proto.org/_static/gen/wamp_latest.html#ticketauth
+    #[strum(serialize = "ticket")]
+    Ticket,
+}
+
+impl Serialize for AuthenticationMethod {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_ref())
+    }
+}
+
+impl<'de> Deserialize<'de> for AuthenticationMethod {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Self::from_str(&s).map_err(|err| serde::de::Error::custom(err.to_string()))
+    }
+}
+
+/// This is what wamp-async-rs users are expected to return from `on_challenge_handler`
+/// during the authentication flow.
+///
+/// See also [`Self::with_signature`] shortcut, and
+/// [`crate::Client::join_realm_with_authentication`] for usage example.
+pub struct AuthenticationChallengeResponse {
+    pub signature: WampString,
+    pub extra: WampDict,
+}
+
+impl AuthenticationChallengeResponse {
+    /// This is a shortcut for a simple authentication flow like [Ticket-based Authentication].
+    ///
+    /// You may return a shared-secret as following:
+    ///
+    /// ```
+    /// AuthenticationChallengeResponse::with_signature("shared-secret".into())
+    /// ```
+    ///
+    /// [Ticket-based Authentication]: https://wamp-proto.org/_static/gen/wamp_latest.html#ticketauth
+    pub fn with_signature(signature: WampString) -> Self {
+        Self {
+            signature,
+            extra: WampDict::default(),
+        }
+    }
+}
+
 /// Convert WampPayloadValue into any serde-deserializable object
 pub fn try_from_any_value<'a, T: DeserializeOwned>(
     value: WampPayloadValue,
@@ -237,3 +307,20 @@ pub type RpcFuture<'a> = std::pin::Pin<
 /// Generic function that can receive RPC calls
 pub type RpcFunc<'a> =
     Box<dyn Fn(Option<WampArgs>, Option<WampKwArgs>) -> RpcFuture<'a> + Send + Sync + 'a>;
+
+/// Authentication Challenge function that should handle a CHALLENGE request during authentication flow.
+/// See more details in [`crate::Client::join_realm_with_authentication`]
+pub type AuthenticationChallengeHandler<'a> = Box<
+    dyn Fn(
+            AuthenticationMethod,
+            WampDict,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<Output = Result<AuthenticationChallengeResponse, WampError>>
+                    + Send
+                    + 'a,
+            >,
+        > + Send
+        + Sync
+        + 'a,
+>;

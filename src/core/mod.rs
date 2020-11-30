@@ -302,8 +302,23 @@ impl<'a> Core<'a> {
                 uri,
                 roles,
                 agent_str,
+                authentication_methods,
+                authentication_id,
+                on_challenge_handler,
                 res,
-            } => send::join_realm(self, uri, roles, agent_str, res).await,
+            } => {
+                send::join_realm(
+                    self,
+                    uri,
+                    roles,
+                    agent_str,
+                    authentication_methods,
+                    authentication_id,
+                    on_challenge_handler,
+                    res,
+                )
+                .await
+            }
             Request::Leave { res } => send::leave_realm(self, res).await,
             Request::Subscribe { uri, res } => send::subscribe(self, uri, res).await,
             Request::Unsubscribe { sub_id, res } => send::unsubscribe(self, sub_id, res).await,

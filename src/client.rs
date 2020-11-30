@@ -201,8 +201,16 @@ impl<'a> Client<'a> {
         ))
     }
 
-    /// Attempts to join a realm and start a session with the server
-    pub async fn join_realm<T: AsRef<str>>(&mut self, realm: T) -> Result<(), WampError> {
+    /// Attempts to join a realm and start a session with the server.
+    ///
+    /// See [`join_realm_with_authentication`] method for more details.
+    async fn inner_join_realm(
+        &mut self,
+        realm: String,
+        authentication_methods: Vec<AuthenticationMethod>,
+        authentication_id: Option<String>,
+        on_challenge_handler: Option<AuthenticationChallengeHandler<'a>>,
+    ) -> Result<(), WampError> {
         // Make sure the event loop is ready to process requests
         if let ClientState::NoEventLoop = self.get_cur_status() {
             debug!("Called join_realm() before th event loop is ready... Waiting...");
@@ -220,20 +228,23 @@ impl<'a> Client<'a> {
         if self.session_id.is_some() {
             return Err(From::from(format!(
                 "join_realm('{}') : Client already joined to a realm",
-                realm.as_ref()
+                realm
             )));
         }
 
         // Send a request for the core to perform the action
         let (res_sender, res) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Join {
-            uri: realm.as_ref().to_string(),
+            uri: realm,
             roles: self.config.roles.clone(),
             agent_str: if self.config.agent.is_empty() {
                 Some(self.config.agent.clone())
             } else {
                 None
             },
+            authentication_methods,
+            authentication_id,
+            on_challenge_handler,
             res: res_sender,
         }) {
             return Err(From::from(format!(
@@ -264,6 +275,70 @@ impl<'a> Client<'a> {
         debug!("Connected with session_id {} !", session_id);
 
         Ok(())
+    }
+
+    /// Attempts to join a realm and start a session with the server.
+    ///
+    /// * `realm` - A name of the WAMP realm
+    pub async fn join_realm<T: Into<String>>(&mut self, realm: T) -> Result<(), WampError> {
+        self.inner_join_realm(realm.into(), vec![], None, None)
+            .await
+    }
+
+    /// Attempts to join a realm and start a session with the server.
+    ///
+    /// * `realm` - A name of the WAMP realm
+    /// * `authentication_methods` - A set of all the authentication methods the client will support
+    /// * `authentication_id` - An authentication ID (e.g. username) the client wishes to authenticate as.
+    ///   It is required for non-anynomous authentication methods.
+    /// * `on_challenge_handler` - An authentication handler function
+    ///
+    /// ```ignore
+    /// client
+    ///     .join_realm_with_authentication(
+    ///         "realm1",
+    ///         vec![wamp_async::AuthenticationMethod::Ticket],
+    ///         "username",
+    ///         |_authentication_method, _extra| async {
+    ///             Ok(wamp_async::AuthenticationChallengeResponse::with_signature(
+    ///                 "password".into(),
+    ///             ))
+    ///         },
+    ///     )
+    ///     .await?;
+    /// ```
+    pub async fn join_realm_with_authentication<
+        Realm,
+        AuthenticationId,
+        AuthenticationChallengeHandler,
+        AuthenticationChallengeHandlerResponse,
+    >(
+        &mut self,
+        realm: Realm,
+        authentication_methods: Vec<AuthenticationMethod>,
+        authentication_id: AuthenticationId,
+        on_challenge_handler: AuthenticationChallengeHandler,
+    ) -> Result<(), WampError>
+    where
+        Realm: Into<String>,
+        AuthenticationId: Into<String>,
+        AuthenticationChallengeHandler: Fn(AuthenticationMethod, WampDict) -> AuthenticationChallengeHandlerResponse
+            + Send
+            + Sync
+            + 'a,
+        AuthenticationChallengeHandlerResponse: std::future::Future<Output = Result<AuthenticationChallengeResponse, WampError>>
+            + Send
+            + 'a,
+    {
+        self.inner_join_realm(
+            realm.into(),
+            authentication_methods,
+            Some(authentication_id.into()),
+            Some(Box::new(move |authentication_method, extra| {
+                Box::pin(on_challenge_handler(authentication_method, extra))
+            })),
+        )
+        .await
     }
 
     /// Leaves the current realm and terminates the session with the server
