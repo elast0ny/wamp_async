@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 
 use log::*;
@@ -25,6 +25,8 @@ pub struct ClientConfig {
     max_msg_size: u32,
     /// When using a secure transport, this option disables certificate validation
     ssl_verify: bool,
+    /// Additional WebSocket headers on establish connection
+    websocket_headers: HashMap<String, String>,
 }
 
 impl Default for ClientConfig {
@@ -55,6 +57,7 @@ impl Default for ClientConfig {
             serializers: vec![SerializerType::Json, SerializerType::MsgPack],
             max_msg_size: 0,
             ssl_verify: true,
+            websocket_headers: HashMap::new(),
         }
     }
 }
@@ -112,6 +115,14 @@ impl ClientConfig {
     /// Returns whether certificate validation is enabled
     pub fn get_ssl_verify(&self) -> bool {
         self.ssl_verify
+    }
+
+    pub fn add_websocket_header(mut self, key: String, val: String) -> Self {
+        self.websocket_headers.insert(key, val);
+        self
+    }
+    pub fn get_websocket_headers(&self) -> &HashMap<String, String> {
+        &self.websocket_headers
     }
 }
 
