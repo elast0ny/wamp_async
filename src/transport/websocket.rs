@@ -113,6 +113,10 @@ pub async fn connect(
         .join(",");
     request = request.header("Sec-WebSocket-Protocol", serializer_list);
 
+    for (key, value) in config.get_websocket_headers() {
+        request = request.header(key, value);
+    }
+
     let sock = match url.scheme() {
         "ws" => Stream::Plain(
             crate::transport::tcp::connect_raw(
