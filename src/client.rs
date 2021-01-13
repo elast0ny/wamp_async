@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
+use futures::FutureExt;
 
 use log::*;
 use tokio::sync::oneshot;
 use tokio::sync::{
-    mpsc, mpsc::error::TryRecvError, mpsc::UnboundedReceiver, mpsc::UnboundedSender,
+    mpsc, mpsc::UnboundedReceiver, mpsc::UnboundedSender,
 };
 use url::*;
 
@@ -593,12 +594,12 @@ impl<'a> Client<'a> {
     /// Returns the current client status
     pub fn get_cur_status(&mut self) -> &ClientState {
         // Check to see if the status changed
-        let new_status = self.core_res.try_recv();
+        let new_status = self.core_res.recv().now_or_never();
         #[allow(clippy::match_wild_err_arm)]
         match new_status {
-            Ok(state) => self.set_next_status(state),
-            Err(TryRecvError::Empty) => &self.core_status,
-            Err(_) => panic!("The event loop died without sending a new status"),
+            Some(Some(state)) => self.set_next_status(state),
+            None => &self.core_status,
+            Some(None) => panic!("The event loop died without sending a new status"),
         }
     }
 
