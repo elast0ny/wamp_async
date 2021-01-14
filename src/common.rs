@@ -183,7 +183,10 @@ impl AuthenticationChallengeResponse {
     /// You may return a shared-secret as following:
     ///
     /// ```
+    /// # use wamp_async::AuthenticationChallengeResponse;
+    /// # fn test() -> AuthenticationChallengeResponse {
     /// AuthenticationChallengeResponse::with_signature("shared-secret".into())
+    /// # }
     /// ```
     ///
     /// [Ticket-based Authentication]: https://wamp-proto.org/_static/gen/wamp_latest.html#ticketauth
