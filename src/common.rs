@@ -65,8 +65,8 @@ pub type WampArgs = Vec<WampPayloadValue>;
 pub type WampKwArgs = serde_json::Map<String, WampPayloadValue>;
 
 /// Generic enum that can hold any concrete WAMP value
-#[serde(untagged)]
 #[derive(Serialize, Deserialize, Debug)]
+#[serde(untagged)]
 pub enum Arg {
     /// uri: a string URI as defined in URIs
     Uri(WampUri),
