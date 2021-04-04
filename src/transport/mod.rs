@@ -22,27 +22,25 @@ quick_error! {
     #[derive(Debug)]
     pub enum TransportError {
         MaximumServerConn {
-            description("Server hit the maximum connection count")
+            display("Server hit the maximum connection count")
         }
         UnexpectedResponse {
-            description("Server responded with unexpected data")
+            display("Server responded with unexpected data")
         }
         SerializerNotSupported(e: String) {
-            description("The current serializer is not supported by the server")
-            display(self_) -> ("{} (Requested : {})", self_, e)
+            display("The current serializer is not supported by the server (Requested : {})", e)
         }
         InvalidMaximumMsgSize(e: u32) {
-            description("The server did not accept the maximum payload size")
-            display(self_) -> ("{} (Requested : {})", self_, e)
+            display("The server did not accept the maximum payload size (Requested : {})", e)
         }
         ConnectionFailed {
-            description("Failed to negotiate connection with the server")
+            display("Failed to negotiate connection with the server")
         }
         SendFailed {
-            description("Failed to send message to peer")
+            display("Failed to send message to peer")
         }
         ReceiveFailed {
-            description("Failed to receive message from peer")
+            display("Failed to receive message from peer")
         }
     }
 }

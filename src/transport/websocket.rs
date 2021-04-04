@@ -5,9 +5,8 @@ use std::str::FromStr;
 use tokio::net::TcpStream;
 use tokio_tungstenite::{
     client_async,
-    stream::Stream,
     tungstenite::{handshake::client::Request, Message},
-    WebSocketStream,
+    MaybeTlsStream, WebSocketStream,
 };
 
 use crate::client::ClientConfig;
@@ -16,7 +15,7 @@ use crate::transport::{Transport, TransportError};
 
 struct WsCtx {
     is_bin: bool,
-    client: WebSocketStream<Stream<TcpStream, tokio_native_tls::TlsStream<TcpStream>>>,
+    client: WebSocketStream<MaybeTlsStream<TcpStream>>,
 }
 
 #[async_trait]
@@ -118,14 +117,14 @@ pub async fn connect(
     }
 
     let sock = match url.scheme() {
-        "ws" => Stream::Plain(
+        "ws" => MaybeTlsStream::Plain(
             crate::transport::tcp::connect_raw(
                 url.host_str().unwrap(),
                 url.port_or_known_default().unwrap(),
             )
             .await?,
         ),
-        "wss" => Stream::Tls(
+        "wss" => MaybeTlsStream::NativeTls(
             crate::transport::tcp::connect_tls(
                 url.host_str().unwrap(),
                 url.port_or_known_default().unwrap(),

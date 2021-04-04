@@ -44,16 +44,13 @@ quick_error! {
     #[derive(Debug)]
     pub enum SerializerError {
         Serialization(e: String) {
-            description("Failed to serialize message")
-            display(_self) -> ("{} : {}", _self, e)
+            display("Failed to serialize message: {}", e)
         }
         Deserialization(e: String) {
-            description("Failed to deserialize message")
-            display(_self) -> ("{} : {}", _self, e)
+            display("Failed to deserialize message: {}", e)
         }
         UnknownSerializer(e: String) {
-            description("Unknown serializer specified")
-            display(_self) -> ("{} : {}", _self, e)
+            display("Unknown serializer specified: {}", e)
         }
     }
 }
