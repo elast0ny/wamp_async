@@ -221,18 +221,18 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
                     (
                         ERROR_ID,
                         typ,
                         request,
                         details,
                         error,
-                        arguments,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
                         arguments_kw,
                     )
                         .serialize(serializer)
-                } else if arguments.is_some() {
+                } else if let Some(arguments) = arguments {
                     (ERROR_ID, typ, request, details, error, arguments).serialize(serializer)
                 } else {
                     (ERROR_ID, typ, request, details, error).serialize(serializer)
@@ -245,10 +245,17 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
-                    (PUBLISH_ID, request, options, topic, arguments, arguments_kw)
+                if let Some(arguments_kw) = arguments_kw {
+                    (
+                        PUBLISH_ID,
+                        request,
+                        options,
+                        topic,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
+                        arguments_kw
+                    )
                         .serialize(serializer)
-                } else if arguments.is_some() {
+                } else if let Some(arguments) = arguments {
                     (PUBLISH_ID, request, options, topic, arguments).serialize(serializer)
                 } else {
                     (PUBLISH_ID, request, options, topic).serialize(serializer)
@@ -279,17 +286,17 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
                     (
                         EVENT_ID,
                         subscription,
                         publication,
                         details,
-                        arguments,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
                         arguments_kw,
                     )
                         .serialize(serializer)
-                } else if arguments.is_some() {
+                } else if let Some(arguments) = arguments {
                     (EVENT_ID, subscription, publication, details, arguments).serialize(serializer)
                 } else {
                     (EVENT_ID, subscription, publication, details).serialize(serializer)
@@ -302,17 +309,17 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
                     (
                         CALL_ID,
                         request,
                         options,
                         procedure,
-                        arguments,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
                         arguments_kw,
                     )
                         .serialize(serializer)
-                } else if arguments.is_some() {
+                } else if let Some(arguments) = arguments {
                     (CALL_ID, request, options, procedure, arguments).serialize(serializer)
                 } else {
                     (CALL_ID, request, options, procedure).serialize(serializer)
@@ -324,9 +331,16 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
-                    (RESULT_ID, request, details, arguments, arguments_kw).serialize(serializer)
-                } else if arguments.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
+                    (
+                        RESULT_ID,
+                        request,
+                        details,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
+                        arguments_kw
+                    )
+                        .serialize(serializer)
+                } else if let Some(arguments) = arguments {
                     (RESULT_ID, request, details, arguments).serialize(serializer)
                 } else {
                     (RESULT_ID, request, details).serialize(serializer)
@@ -353,17 +367,17 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
                     (
                         INVOCATION_ID,
                         request,
                         registration,
                         details,
-                        arguments,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
                         arguments_kw,
                     )
                         .serialize(serializer)
-                } else if arguments.is_some() {
+                } else if let Some(arguments) = arguments {
                     (INVOCATION_ID, request, registration, details, arguments).serialize(serializer)
                 } else {
                     (INVOCATION_ID, request, registration, details).serialize(serializer)
@@ -375,9 +389,16 @@ impl Serialize for Msg {
                 ref arguments,
                 ref arguments_kw,
             } => {
-                if arguments_kw.is_some() {
-                    (YIELD_ID, request, options, arguments, arguments_kw).serialize(serializer)
-                } else if arguments.is_some() {
+                if let Some(arguments_kw) = arguments_kw {
+                    (
+                        YIELD_ID,
+                        request,
+                        options,
+                        arguments.as_ref().unwrap_or(&WampArgs::new()),
+                        arguments_kw
+                    )
+                        .serialize(serializer)
+                } else if let Some(arguments) = arguments {
                     (YIELD_ID, request, options, arguments).serialize(serializer)
                 } else {
                     (YIELD_ID, request, options).serialize(serializer)
