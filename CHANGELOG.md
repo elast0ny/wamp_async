@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+
+* Upgraded dependencies
+* Fixed the serialization of nullable positional arguments in call, publish,
+  and similar methods according to the WAMP-proto spec
+
 ## 0.3.0
 
 * [Breaking change] upgrade to tokio 1.0
