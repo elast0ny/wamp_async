@@ -24,6 +24,7 @@ pub enum Request<'a> {
     },
     Subscribe {
         uri: WampString,
+        options: WampDict,
         res: PendingSubResult,
     },
     Unsubscribe {
@@ -187,14 +188,14 @@ pub async fn leave_realm(core: &mut Core<'_>, res: Sender<Result<(), WampError>>
     Status::Ok
 }
 
-pub async fn subscribe(core: &mut Core<'_>, topic: WampString, res: PendingSubResult) -> Status {
+pub async fn subscribe(core: &mut Core<'_>, topic: WampString, options: WampDict, res: PendingSubResult) -> Status {
     let request = core.create_request();
 
     if let Err(e) = core
         .send(&Msg::Subscribe {
             request,
             topic,
-            options: WampDict::new(),
+            options,
         })
         .await
     {
