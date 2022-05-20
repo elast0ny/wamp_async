@@ -140,6 +140,26 @@ impl ClientRole {
             ClientRole::Subscriber => "subscriber",
         }
     }
+
+    pub fn get_features(&self) -> WampDict {
+        match self {
+            ClientRole::Subscriber => {
+                let mut features = WampDict::new();
+                for feature in vec!["pattern_based_subscription"] {
+                    features.insert(feature.to_owned(), Arg::Bool(true));
+                }
+                features.clone()
+            },
+            _ => WampDict::new()
+        }
+    }
+
+    pub fn has_features(&self) -> WampBool {
+        match self {
+            ClientRole::Subscriber => true,
+            _ => false
+        }
+    }
 }
 
 /// All the supported roles a server can have

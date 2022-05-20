@@ -75,7 +75,14 @@ pub async fn join_realm(
     let mut client_roles: WampDict = WampDict::new();
     // Add all of our roles
     for role in &roles {
-        client_roles.insert(String::from(role.to_str()), Arg::Dict(WampDict::new()));
+        let mut roledict = WampDict::new();
+        // Support for pattern_based_subscription MUST be announced by Subscribers.
+        // Crossbar doesn't enforce this, but other brokers might.
+        if role.has_features() {
+            roledict.insert("features".to_owned(), Arg::Dict(role.get_features()));
+        }
+        
+        client_roles.insert(String::from(role.to_str()), Arg::Dict(roledict.clone()));
     }
     details.insert("roles".to_owned(), Arg::Dict(client_roles));
 
