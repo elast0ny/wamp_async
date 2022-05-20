@@ -67,13 +67,13 @@ pub type WampKwArgs = serde_json::Map<String, WampPayloadValue>;
 pub struct SubOptions(Option<WampDict>);
 
 impl SubOptions {
-    pub fn with_match(&self, matchOpt: String) -> Self {
+    pub fn with_match(&self, match_option: &str) -> Self {
         let mut options = match &self.0 {
             Some(opts) => opts.clone(),
             None => WampDict::new(),
         };
 
-        options.insert("match".to_string(), Arg::String(matchOpt));
+        options.insert("match".to_string(), Arg::String(match_option.to_owned()));
 
         SubOptions(Some(options))
     }

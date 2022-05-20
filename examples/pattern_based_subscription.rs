@@ -1,5 +1,5 @@
 use std::error::Error;
-use wamp_async::{Client, ClientConfig, SubOptions};
+use wamp_async::{Client, ClientConfig, SubOptions, Arg};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -25,7 +25,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // If one of the args is "pub", start as a publisher
     if let Some(_) = std::env::args().find(|a| a == "pub") {
         loop {
-            match client.publish("peer.heartbeat", None, None, true).await {
+            match client.publish(format!("peer.heartbeat.{}", cur_event_num), None, None, true).await {
                 Ok(pub_id) => println!("\tSent event id {}", pub_id.unwrap()),
                 Err(e) => {
                     println!("publish error {}", e);
@@ -44,17 +44,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument"
         );
-        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat", SubOptions::new()).await?;
+        // Prefix Match
+        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat", SubOptions::new().with_match("prefix")).await?;
+        // Wildcard match with empty uri part
+        let (sub_id, mut heartbeat_last) = client.subscribe("peer..9", SubOptions::new().with_match("wildcard")).await?;
         println!("Waiting for {} heartbeats...", max_events);
 
         while cur_event_num < max_events {
-            match heartbeat_queue.recv().await {
-                Some((pub_id, details, args, kwargs)) => {
-                    println!("\tGot {} (details: {:?}, args: {:?}, kwargs: {:?})", pub_id, details args, kwargs)
+            tokio::select! {
+                pre = heartbeat_queue.recv() => match pre {
+                    Some((pub_id, details, args, kwargs)) => {
+                        println!("\tGot {} (details: {:?} args: {:?}, kwargs: {:?})", pub_id, details, args, kwargs);
+                        cur_event_num = match &details["topic"] {
+                            Arg::Uri(topic) => topic.split(".").collect::<Vec<&str>>().last().unwrap().parse::<usize>().unwrap(),
+                            _ => 0
+                        };
+                    },
+                    None => println!("Subscription is done"),
                 }
-                None => println!("Subscription is done"),
-            };
-            cur_event_num += 1;
+
+                last = heartbeat_last.recv() => match last {
+                    Some((pub_id, details, args, kwargs)) => {
+                        println!("\tLast Heartbeat: {} (details: {:?} args: {:?}, kwargs: {:?})", pub_id, details, args, kwargs)
+                    },
+                    None => println!("Subscription is done"),
+                }
+            }
         }
 
         client.unsubscribe(sub_id).await?;
