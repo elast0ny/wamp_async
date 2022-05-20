@@ -15,6 +15,7 @@ mod send;
 
 use crate::client;
 use crate::message::*;
+use crate::Arg;
 pub use send::Request;
 
 pub enum Status {

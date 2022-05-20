@@ -64,8 +64,41 @@ pub type WampArgs = Vec<WampPayloadValue>;
 /// Named WAMP argument map
 pub type WampKwArgs = serde_json::Map<String, WampPayloadValue>;
 
+pub struct SubOptions(Option<WampDict>);
+
+impl SubOptions {
+    pub fn with_match(&self, matchOpt: String) -> Self {
+        let mut options = match &self.0 {
+            Some(opts) => opts.clone(),
+            None => WampDict::new(),
+        };
+
+        options.insert("match".to_string(), Arg::String(matchOpt));
+
+        SubOptions(Some(options))
+    }
+
+    pub fn new() -> Self {
+        Self::empty()
+    }
+
+    pub fn empty() -> Self {
+        SubOptions(None)
+    }
+
+    pub fn get_dict(&self) -> Option<WampDict> {
+        self.0.clone()
+    }
+}
+
+impl Default for SubOptions {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 /// Generic enum that can hold any concrete WAMP value
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum Arg {
     /// uri: a string URI as defined in URIs
