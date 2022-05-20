@@ -320,7 +320,7 @@ impl<'a> Core<'a> {
                 .await
             }
             Request::Leave { res } => send::leave_realm(self, res).await,
-            Request::Subscribe { uri, res } => send::subscribe(self, uri, res).await,
+            Request::Subscribe { uri, options, res } => send::subscribe(self, uri, options, res).await,
             Request::Unsubscribe { sub_id, res } => send::unsubscribe(self, sub_id, res).await,
             Request::Publish {
                 uri,
