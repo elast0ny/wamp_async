@@ -62,7 +62,7 @@ pub async fn event(
     core: &mut Core<'_>,
     subscription: WampId,
     publication: WampId,
-    _details: WampDict,
+    details: WampDict,
     arguments: Option<WampArgs>,
     arguments_kw: Option<WampKwArgs>,
 ) -> Status {
@@ -79,7 +79,7 @@ pub async fn event(
 
     // Forward the event to the client
     if evt_queue
-        .send((publication, arguments, arguments_kw))
+        .send((publication, details, arguments, arguments_kw))
         .is_err()
     {
         warn!(
