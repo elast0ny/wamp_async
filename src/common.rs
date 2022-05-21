@@ -108,6 +108,7 @@ impl ClientRole {
         }
     }
 
+    /// Creates a features dictionary to declare for the role
     pub fn get_features(&self) -> WampDict {
         match self {
             ClientRole::Subscriber => {
@@ -121,7 +122,8 @@ impl ClientRole {
         }
     }
 
-    pub fn has_features(&self) -> WampBool {
+    /// Returns true if the role has features that need to be declared
+    pub fn has_features(&self) -> bool {
         match self {
             ClientRole::Subscriber => true,
             _ => false

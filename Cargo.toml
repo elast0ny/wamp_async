@@ -1,5 +1,8 @@
 [package]
-authors = ["ElasT0ny <elast0ny00@gmail.com>"]
+authors = [
+    "ElasT0ny <elast0ny00@gmail.com>",
+    "Devon Bagley <devonbagley@gmail.com>"
+]
 description = "An asynchronous WAMP implementation"
 edition = "2018"
 license = "MIT OR Apache-2.0"
