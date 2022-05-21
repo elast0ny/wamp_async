@@ -20,7 +20,7 @@ For usage examples, see :
 
   ```rust
   // Register for events
-  let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat", SubOptions::empty()).await?;
+  let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat", SubscribeOptions::empty()).await?;
   // Wait for the next event
   match event_queue.recv().await {
       Some((_pub_id, _details, args, kwargs)) => println!("Event(args: {:?}, kwargs: {:?})", args, kwargs),

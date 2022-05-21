@@ -1,5 +1,5 @@
 use std::error::Error;
-use wamp_async::{Client, ClientConfig, SubOptions, Arg};
+use wamp_async::{Client, ClientConfig, OptionBuilder, SubscribeOptions, Arg};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -45,9 +45,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             "Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument"
         );
         // Prefix Match
-        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat", SubOptions::new().with_match("prefix")).await?;
+        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat", SubscribeOptions::new().with_match("prefix")).await?;
         // Wildcard match with empty uri part
-        let (sub_id, mut heartbeat_last) = client.subscribe("peer..9", SubOptions::new().with_match("wildcard")).await?;
+        let (last_sub_id, mut heartbeat_last) = client.subscribe("peer..9", SubscribeOptions::new().with_match("wildcard")).await?;
         println!("Waiting for {} heartbeats...", max_events);
 
         while cur_event_num < max_events {
@@ -55,24 +55,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 pre = heartbeat_queue.recv() => match pre {
                     Some((pub_id, details, args, kwargs)) => {
                         println!("\tGot {} (details: {:?} args: {:?}, kwargs: {:?})", pub_id, details, args, kwargs);
+                        // The publisher gives us the current event number in the topic.
                         cur_event_num = match &details["topic"] {
                             Arg::Uri(topic) => topic.split(".").collect::<Vec<&str>>().last().unwrap().parse::<usize>().unwrap(),
-                            _ => 0
-                        };
+                            _ => panic!("We got an event with no topic")
+                        } + 1;
                     },
                     None => println!("Subscription is done"),
                 }
 
                 last = heartbeat_last.recv() => match last {
                     Some((pub_id, details, args, kwargs)) => {
+                        // We know we are done here.
+                        client.unsubscribe(last_sub_id).await?;
+                        client.unsubscribe(sub_id).await?;
                         println!("\tLast Heartbeat: {} (details: {:?} args: {:?}, kwargs: {:?})", pub_id, details, args, kwargs)
                     },
                     None => println!("Subscription is done"),
                 }
             }
         }
-
-        client.unsubscribe(sub_id).await?;
     }
 
     println!("Leaving realm");
