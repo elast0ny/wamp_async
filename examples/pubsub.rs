@@ -1,5 +1,5 @@
 use std::error::Error;
-use wamp_async::{Client, ClientConfig};
+use wamp_async::{Client, ClientConfig, OptionBuilder, SubscribeOptions};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -44,13 +44,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!(
             "Subscribing to peer.heartbeat events. Start another instance with a 'pub' argument"
         );
-        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat").await?;
+        let (sub_id, mut heartbeat_queue) = client.subscribe("peer.heartbeat", SubscribeOptions::new()).await?;
         println!("Waiting for {} heartbeats...", max_events);
 
         while cur_event_num < max_events {
             match heartbeat_queue.recv().await {
-                Some((pub_id, args, kwargs)) => {
-                    println!("\tGot {} (args: {:?}, kwargs: {:?})", pub_id, args, kwargs)
+                Some((pub_id, details, args, kwargs)) => {
+                    println!("\tGot {} (details: {:?}, args: {:?}, kwargs: {:?})", pub_id, details args, kwargs)
                 }
                 None => println!("Subscription is done"),
             };

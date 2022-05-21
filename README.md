@@ -20,10 +20,10 @@ For usage examples, see :
 
   ```rust
   // Register for events
-  let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat").await?;
+  let (_sub_id, mut event_queue) = client.subscribe("peer.heartbeat", SubscribeOptions::empty()).await?;
   // Wait for the next event
   match event_queue.recv().await {
-      Some((_pub_id, args, kwargs)) => println!("Event(args: {:?}, kwargs: {:?})", args, kwargs),
+      Some((_pub_id, _details, args, kwargs)) => println!("Event(args: {:?}, kwargs: {:?})", args, kwargs),
       None => println!("Event queue closed"),
   };
   ```
@@ -116,10 +116,11 @@ let rpc_id = client.register("peer.echo", rpc_echo).await?;
 
 #### Advanced profile:
 
-| Feature               | Desciption                                                      | Status      |
-| --------------------- | --------------------------------------------------------------- | ----------- |
-| Client Authentication | Low-level support for Client Authentication (Ticket-based, CRA) | ✔           |
-| Progressive Calls     | Partial results reported from Callee to Caller                  | help wanted |
+| Feature                     | Desciption                                                      | Status      |
+| --------------------------- | --------------------------------------------------------------- | ----------- |
+| Client Authentication       | Low-level support for Client Authentication (Ticket-based, CRA) | ✔           |
+| Pattern Based Subscriptions | Wildcard, and Prefix matches for channel topics                 | ✔           |
+| Progressive Calls           | Partial results reported from Callee to Caller                  | help wanted |
 
 ## License
 

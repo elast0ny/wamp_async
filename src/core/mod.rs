@@ -15,6 +15,7 @@ mod send;
 
 use crate::client;
 use crate::message::*;
+use crate::Arg;
 pub use send::Request;
 
 pub enum Status {
@@ -34,6 +35,7 @@ pub type JoinResult = Sender<
 >;
 pub type SubscriptionQueue = UnboundedReceiver<(
     WampId,           // Publish event ID
+    WampDict,        // Publish event Details
     Option<WampArgs>, // Publish args
     Option<WampKwArgs>,
 )>; // publish kwargs
@@ -82,7 +84,7 @@ pub struct Core<'a> {
     /// Pending subscription requests sent to the server
     pending_sub: HashMap<WampId, PendingSubResult>,
     /// Current subscriptions
-    subscriptions: HashMap<WampId, UnboundedSender<(WampId, Option<WampArgs>, Option<WampKwArgs>)>>,
+    subscriptions: HashMap<WampId, UnboundedSender<(WampId, WampDict, Option<WampArgs>, Option<WampKwArgs>)>>,
 
     /// Pending RPC registration requests sent to the server
     pending_register: HashMap<WampId, (RpcFunc<'a>, PendingRegisterResult)>,
@@ -320,7 +322,7 @@ impl<'a> Core<'a> {
                 .await
             }
             Request::Leave { res } => send::leave_realm(self, res).await,
-            Request::Subscribe { uri, res } => send::subscribe(self, uri, res).await,
+            Request::Subscribe { uri, options, res } => send::subscribe(self, uri, options, res).await,
             Request::Unsubscribe { sub_id, res } => send::unsubscribe(self, sub_id, res).await,
             Request::Publish {
                 uri,

@@ -12,6 +12,7 @@ use url::*;
 pub use crate::common::*;
 use crate::core::*;
 use crate::error::*;
+use crate::options::*;
 use crate::serializer::SerializerType;
 
 /// Options one can set when connecting to a WAMP server
@@ -397,11 +398,16 @@ impl<'a> Client<'a> {
     pub async fn subscribe<T: AsRef<str>>(
         &self,
         topic: T,
+        options: SubscribeOptions
     ) -> Result<(WampId, SubscriptionQueue), WampError> {
         // Send the request
         let (res, result) = oneshot::channel();
         if let Err(e) = self.ctl_channel.send(Request::Subscribe {
             uri: topic.as_ref().to_string(),
+            options: match options.get_dict() {
+                Some(dict) => dict,
+                None => WampDict::new(),
+            },
             res,
         }) {
             return Err(From::from(format!(

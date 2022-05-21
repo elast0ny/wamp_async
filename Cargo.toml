@@ -1,10 +1,13 @@
 [package]
-authors = ["ElasT0ny <elast0ny00@gmail.com>"]
+authors = [
+    "ElasT0ny <elast0ny00@gmail.com>",
+    "Devon Bagley <devonbagley@gmail.com>"
+]
 description = "An asynchronous WAMP implementation"
 edition = "2018"
 license = "MIT OR Apache-2.0"
 name = "wamp_async"
-version = "0.3.2-alpha.0"
+version = "0.4.0-alpha.0"
 
 categories = ["network-programming", "web-programming", "asynchronous"]
 documentation = "https://docs.rs/wamp_async"
