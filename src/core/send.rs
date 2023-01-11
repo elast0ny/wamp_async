@@ -16,6 +16,7 @@ pub enum Request<'a> {
         agent_str: Option<WampString>,
         authentication_methods: Vec<AuthenticationMethod>,
         authentication_id: Option<WampString>,
+        authextra: Option<HashMap<String, String>>,
         on_challenge_handler: Option<AuthenticationChallengeHandler<'a>>,
         res: Sender<JoinRealmResult>,
     },
@@ -66,6 +67,7 @@ pub async fn join_realm(
     roles: HashSet<ClientRole>,
     agent_str: Option<WampString>,
     authentication_methods: Vec<AuthenticationMethod>,
+    authextra: Option<HashMap<String, String>>,
     authid: Option<WampString>,
     on_challenge_handler: Option<AuthenticationChallengeHandler<'_>>,
     res: JoinResult,
@@ -94,6 +96,12 @@ pub async fn join_realm(
                     .collect::<Vec<_>>(),
             ),
         );
+        if let Some(extra) = authextra {
+            let a: WampDict = WampDict::from([
+                ("pubkey".to_owned(), Arg::String(String::from(extra.get("pubkey").unwrap().to_owned()))),
+            ]);
+            details.insert("authextra".to_owned(), Arg::Dict(a));
+        }
     }
 
     if let Some(authid) = authid {

@@ -22,6 +22,8 @@ pub struct ClientConfig {
     roles: HashSet<ClientRole>,
     /// A priority list of which serializer to use when talking to the server
     serializers: Vec<SerializerType>,
+
+    authextra: HashMap<String, String>,
     /// Sets the maximum message to be sent over the transport
     max_msg_size: u32,
     /// When using a secure transport, this option disables certificate validation
@@ -55,10 +57,11 @@ impl Default for ClientConfig {
             .iter()
             .cloned()
             .collect(),
-            serializers: vec![SerializerType::Json, SerializerType::MsgPack],
+            serializers: vec![SerializerType::Json, SerializerType::MsgPack, SerializerType::Cbor],
             max_msg_size: 0,
             ssl_verify: true,
             websocket_headers: HashMap::new(),
+            authextra: HashMap::new(),
         }
     }
 }
@@ -68,6 +71,12 @@ impl ClientConfig {
     pub fn set_agent<T: AsRef<str>>(mut self, agent: T) -> Self {
         self.agent = String::from(agent.as_ref());
         self
+    }
+    pub fn set_authextra(&mut self, pkey: String) {
+        let m = HashMap::from([
+            ("pubkey".to_owned(), pkey),
+        ]);
+        self.authextra = m;
     }
     /// Returns the currently set agent string
     pub fn get_agent(&self) -> &str {
@@ -256,6 +265,11 @@ impl<'a> Client<'a> {
             },
             authentication_methods,
             authentication_id,
+            authextra: if !self.config.authextra.is_empty() {
+                Some(self.config.authextra.clone())
+            } else {
+                None
+            },
             on_challenge_handler,
             res: res_sender,
         }) {
@@ -351,6 +365,42 @@ impl<'a> Client<'a> {
             })),
         )
         .await
+    }
+
+    pub async fn join_realm_with_cryptosign<
+    Realm,
+    AuthenticationId,
+    >(
+        &mut self,
+        realm: Realm,
+        authentication_id: AuthenticationId,
+        public_key: String,
+        secret_key: String
+    ) -> Result<(), WampError>
+    where
+        Realm: Into<String>,
+        AuthenticationId: Into<String>,
+    {
+        self.config.set_authextra(public_key);
+        let cs = CryptoSign::new(secret_key);
+        self.join_realm_with_authentication(
+            realm,
+            vec![AuthenticationMethod::CryptoSign],
+            authentication_id,
+            move |_authentication_method, _extra| async move {
+                let f = nacl::sign::generate_keypair(&cs.sk);
+
+                let data = _extra.get("challenge").unwrap();
+                let challenge = match data {
+                    Arg::Uri(c) => c,
+                    _ => panic!("ERROR"),
+                };
+
+                let signature = CryptoSign::vec_array96(nacl::sign::sign(&CryptoSign::hex2bytes(challenge), &f.skey).ok().unwrap());
+                let sig = CryptoSign::bytes2hex96(signature);
+                Ok(AuthenticationChallengeResponse::with_signature(sig))
+            },
+        ).await
     }
 
     /// Leaves the current realm and terminates the session with the server

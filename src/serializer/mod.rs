@@ -4,6 +4,7 @@ use crate::message::Msg;
 
 pub mod json;
 pub mod msgpack;
+pub mod cbor;
 
 #[repr(u8)]
 #[derive(Debug, Copy, Clone)]
@@ -11,6 +12,7 @@ pub mod msgpack;
 pub enum SerializerType {
     Json = 1,
     MsgPack = 2,
+    Cbor = 0,
     // 3 - 15 reserved
 }
 
@@ -18,7 +20,9 @@ impl std::str::FromStr for SerializerType {
     type Err = crate::serializer::SerializerError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s == SerializerType::Json.to_str() {
+        if s == SerializerType::Cbor.to_str() {
+            Ok(SerializerType::Cbor)
+        } else if s == SerializerType::Json.to_str() {
             Ok(SerializerType::Json)
         } else if s == SerializerType::MsgPack.to_str() {
             Ok(SerializerType::MsgPack)
@@ -36,6 +40,7 @@ impl SerializerType {
         match self {
             SerializerType::Json => "wamp.2.json",
             SerializerType::MsgPack => "wamp.2.msgpack",
+            SerializerType::Cbor => "wamp.2.cbor",
         }
     }
 }

@@ -129,6 +129,7 @@ impl<'a> Core<'a> {
         debug!("Connected with serializer : {:?}", serializer_type);
 
         let serializer: Box<dyn SerializerImpl + Send> = match serializer_type {
+            SerializerType::Cbor => Box::new(cbor::CborSerializer {}),
             SerializerType::Json => Box::new(json::JsonSerializer {}),
             SerializerType::MsgPack => Box::new(msgpack::MsgPackSerializer {}),
         };
@@ -304,6 +305,7 @@ impl<'a> Core<'a> {
                 agent_str,
                 authentication_methods,
                 authentication_id,
+                authextra,
                 on_challenge_handler,
                 res,
             } => {
@@ -313,6 +315,7 @@ impl<'a> Core<'a> {
                     roles,
                     agent_str,
                     authentication_methods,
+                    authextra,
                     authentication_id,
                     on_challenge_handler,
                     res,

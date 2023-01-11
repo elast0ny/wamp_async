@@ -177,6 +177,7 @@ pub async fn connect(
         Box::new(WsCtx {
             is_bin: match picked_serializer {
                 SerializerType::MsgPack => true,
+                SerializerType::Cbor=> true,
                 _ => false,
             },
             client,

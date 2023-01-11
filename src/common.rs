@@ -5,6 +5,7 @@ use std::hash::Hash;
 use std::num::NonZeroU64;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::convert::TryInto;
 
 use log::*;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -63,6 +64,61 @@ pub type WampPayloadValue = serde_json::Value;
 pub type WampArgs = Vec<WampPayloadValue>;
 /// Named WAMP argument map
 pub type WampKwArgs = serde_json::Map<String, WampPayloadValue>;
+
+
+#[derive(Copy, Clone)]
+pub struct CryptoSign {
+    pub sk: [u8; 32]
+}
+
+impl CryptoSign {
+    pub fn new(secret_key: String) -> CryptoSign {
+        let raw_sk = secret_key.to_owned();
+        let sk = CryptoSign::vec_array32(hex::decode(raw_sk).ok().unwrap());
+        CryptoSign {
+            sk: sk,
+        }
+    }
+
+    pub fn generate_signature<'a>(&'a self, extra: HashMap<String, Arg>) -> String {
+        let f = nacl::sign::generate_keypair(&self.sk);
+
+        let data = extra.get("challenge").unwrap();
+        let challenge = match data {
+            Arg::Uri(c) => c,
+            _ => panic!("ERROR"),
+        };
+
+        let signature = CryptoSign::vec_array96(nacl::sign::sign(&CryptoSign::hex2bytes(challenge), &f.skey).ok().unwrap());
+        CryptoSign::bytes2hex96(signature)
+    }
+
+    pub fn vec_array32<T>(v: Vec<T>) -> [T; 32] {
+        v.try_into()
+            .unwrap_or_else(|v: Vec<T>| panic!("Expected a Vec of length {} but it was {}", 32, v.len()))
+    }
+    pub fn hex2bytes(s: &str) -> [u8; 32] {
+        let res = hex::decode(s).ok().unwrap();
+        CryptoSign::vec_array32(res)
+    }
+
+    pub fn hex2bytes96(s: &str) -> [u8; 96] {
+        let res = hex::decode(s).ok().unwrap();
+        CryptoSign::vec_array96(res)
+    }
+
+    pub fn vec_array96<T>(v: Vec<T>) -> [T; 96] {
+        v.try_into()
+            .unwrap_or_else(|v: Vec<T>| panic!("Expected a Vec of length {} but it was {}", 96, v.len()))
+    }
+
+    pub fn bytes2hex96(d: [u8; 96]) -> String  {
+        hex::encode(d)
+    }
+}
+
+unsafe impl Send for CryptoSign {}
+unsafe impl Sync for CryptoSign {}
 
 /// Generic enum that can hold any concrete WAMP value
 #[derive(Serialize, Deserialize, Debug)]
@@ -146,6 +202,9 @@ pub enum AuthenticationMethod {
     /// [Ticket-based Authentication]: https://wamp-proto.org/_static/gen/wamp_latest.html#ticketauth
     #[strum(serialize = "ticket")]
     Ticket,
+
+    #[strum(serialize = "cryptosign")]
+    CryptoSign,
 }
 
 impl Serialize for AuthenticationMethod {
@@ -196,6 +255,16 @@ impl AuthenticationChallengeResponse {
             extra: WampDict::default(),
         }
     }
+
+    pub fn with_authextra(signature: WampString, pkey: &str) -> Self {
+        let mut f = WampDict::new();
+        f.insert(String::from("authextra"), Arg::String(String::from(pkey)));
+        Self {
+            signature,
+            extra: f,
+        }
+    }
+
 }
 
 /// Convert WampPayloadValue into any serde-deserializable object
